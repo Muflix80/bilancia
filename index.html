@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1a1a2e">
+<link rel="manifest" href="manifest.json">
+<title>Bilancia Arnia</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: system-ui, sans-serif;
+    background:#1a1a2e; color:#eee;
+    min-height:100vh; display:flex; flex-direction:column;
+    align-items:center; padding:20px; gap:16px;
+  }
+  h1 { font-size:1.1rem; color:#ffd54f; letter-spacing:1px; }
+  #stato { font-size:.85rem; color:#888; min-height:1.2em; text-align:center; }
+  #totale {
+    font-size:17vw; font-weight:700; line-height:1.1;
+    color:#4fc3f7; font-variant-numeric: tabular-nums;
+  }
+  #totale small { font-size:.35em; color:#888; }
+  .celle {
+    display:grid; grid-template-columns:1fr 1fr; gap:10px;
+    width:100%; max-width:420px;
+  }
+  .cella {
+    background:#16213e; border-radius:12px; padding:14px;
+    text-align:center;
+  }
+  .cella .nome { font-size:.75rem; color:#888; }
+  .cella .val {
+    font-size:1.5rem; font-weight:600; color:#aed581;
+    font-variant-numeric: tabular-nums;
+  }
+  #info { font-size:.8rem; color:#666; }
+  button {
+    background:#ffd54f; color:#1a1a2e; border:0; border-radius:24px;
+    padding:14px 32px; font-size:1rem; font-weight:700;
+  }
+  button:disabled { opacity:.4; }
+  #err { color:#ef5350; font-size:.8rem; text-align:center; max-width:420px; }
+</style>
+</head>
+<body>
+  <h1>🐝 BILANCIA ARNIA</h1>
+  <div id="stato">Non connesso</div>
+  <div id="totale">--<small> kg</small></div>
+  <div class="celle">
+    <div class="cella"><div class="nome">CELLA 1</div><div class="val" id="c1">--</div></div>
+    <div class="cella"><div class="nome">CELLA 2</div><div class="val" id="c2">--</div></div>
+    <div class="cella"><div class="nome">CELLA 3</div><div class="val" id="c3">--</div></div>
+    <div class="cella"><div class="nome">CELLA 4</div><div class="val" id="c4">--</div></div>
+  </div>
+  <div id="info"></div>
+  <button id="btn">CERCA BILANCIA</button>
+  <div id="err"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let device = null;
+
+function decodificaBTHome(dv) {
+  // dv = DataView del service data 0xFCD2, a partire dal device info byte
+  if (dv.getUint8(0) !== 0x40) return null;
+  const masse = []; let seq = null; let i = 1;
+  while (i < dv.byteLength) {
+    const tipo = dv.getUint8(i);
+    if (tipo === 0x00 && i + 1 < dv.byteLength) {          // packet id
+      seq = dv.getUint8(i + 1); i += 2;
+    } else if (tipo === 0x06 && i + 2 < dv.byteLength) {    // mass kg*100 LE
+      masse.push(dv.getUint16(i + 1, true) * 10); i += 3;   // -> grammi
+    } else break;
+  }
+  return masse.length ? { masse, seq } : null;
+}
+
+let ultimoSeq = -1;
+function aggiorna(masse, seq, rssi) {
+  if (seq !== null && seq === ultimoSeq) return;   // dedup
+  ultimoSeq = seq;
+  const n = masse.length;
+  const tot = n > 1 ? masse[n - 1] : masse[0];
+  $('totale').innerHTML = (tot / 1000).toFixed(2) + '<small> kg</small>';
+  for (let k = 0; k < 4; k++)
+    $('c' + (k + 1)).textContent = k < n - 1 ? (masse[k] / 1000).toFixed(2) : '--';
+  $('info').textContent = 'seq ' + seq + (rssi != null ? ' · RSSI ' + rssi + ' dBm' : '')
+                        + ' · ' + new Date().toLocaleTimeString();
+}
+
+async function cerca() {
+  $('err').textContent = '';
+  try {
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ name: 'Arnia01' }],
+      optionalServices: []
+    });
+    $('stato').textContent = 'Trovata: ' + device.name + ' — ascolto advertising...';
+
+    if (!device.watchAdvertisements) {
+      $('err').textContent =
+        'Il tuo Chrome non espone watchAdvertisements. Attiva chrome://flags/#enable-experimental-web-platform-features e riprova.';
+      return;
+    }
+
+    device.addEventListener('advertisementreceived', ev => {
+      const sd = ev.serviceData.get('0000fcd2-0000-1000-8000-00805f9b34fb');
+      if (!sd) return;
+      const r = decodificaBTHome(sd);
+      if (r) {
+        $('stato').textContent = '📡 In ricezione da ' + device.name;
+        aggiorna(r.masse, r.seq, ev.rssi);
+      }
+    });
+
+    await device.watchAdvertisements();
+  } catch (e) {
+    $('err').textContent = e.message || String(e);
+    $('stato').textContent = 'Non connesso';
+  }
+}
+
+$('btn').addEventListener('click', cerca);
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
