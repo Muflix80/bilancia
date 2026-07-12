@@ -39,7 +39,7 @@
     background:#ffd54f; color:#1a1a2e; border:0; border-radius:24px;
     padding:14px 32px; font-size:1rem; font-weight:700;
   }
-  button:disabled { opacity:.4; }
+  button.connesso { background:#ef5350; color:#fff; }
   #err { color:#ef5350; font-size:.8rem; text-align:center; max-width:420px; }
 </style>
 </head>
@@ -54,74 +54,70 @@
     <div class="cella"><div class="nome">CELLA 4</div><div class="val" id="c4">--</div></div>
   </div>
   <div id="info"></div>
-  <button id="btn">CERCA BILANCIA</button>
+  <button id="btn">CONNETTI BILANCIA</button>
   <div id="err"></div>
 
 <script>
 const $ = id => document.getElementById(id);
+const UUID_SERVIZIO = 'b1ee0001-0000-1000-8000-00805f9b34fb';
+const UUID_PESI     = 'b1ee0002-0000-1000-8000-00805f9b34fb';
+
 let device = null;
+let connesso = false;
 
-function decodificaBTHome(dv) {
-  // dv = DataView del service data 0xFCD2, a partire dal device info byte
-  if (dv.getUint8(0) !== 0x40) return null;
-  const masse = []; let seq = null; let i = 1;
-  while (i < dv.byteLength) {
-    const tipo = dv.getUint8(i);
-    if (tipo === 0x00 && i + 1 < dv.byteLength) {          // packet id
-      seq = dv.getUint8(i + 1); i += 2;
-    } else if (tipo === 0x06 && i + 2 < dv.byteLength) {    // mass kg*100 LE
-      masse.push(dv.getUint16(i + 1, true) * 10); i += 3;   // -> grammi
-    } else break;
-  }
-  return masse.length ? { masse, seq } : null;
-}
-
-let ultimoSeq = -1;
-function aggiorna(masse, seq, rssi) {
-  if (seq !== null && seq === ultimoSeq) return;   // dedup
-  ultimoSeq = seq;
-  const n = masse.length;
-  const tot = n > 1 ? masse[n - 1] : masse[0];
-  $('totale').innerHTML = (tot / 1000).toFixed(2) + '<small> kg</small>';
+function mostraPesi(dv) {
+  // payload: 5x int32 LE (C1..C4, TOT) in grammi
+  if (dv.byteLength < 20) return;
+  const g = [];
+  for (let k = 0; k < 5; k++) g.push(dv.getInt32(k * 4, true));
+  $('totale').innerHTML = (g[4] / 1000).toFixed(3) + '<small> kg</small>';
   for (let k = 0; k < 4; k++)
-    $('c' + (k + 1)).textContent = k < n - 1 ? (masse[k] / 1000).toFixed(2) : '--';
-  $('info').textContent = 'seq ' + seq + (rssi != null ? ' · RSSI ' + rssi + ' dBm' : '')
-                        + ' · ' + new Date().toLocaleTimeString();
+    $('c' + (k + 1)).textContent = (g[k] / 1000).toFixed(3);
+  $('info').textContent = 'aggiornato ' + new Date().toLocaleTimeString();
 }
 
-async function cerca() {
+function setConnesso(on) {
+  connesso = on;
+  $('btn').textContent = on ? 'DISCONNETTI' : 'CONNETTI BILANCIA';
+  $('btn').classList.toggle('connesso', on);
+  $('stato').textContent = on ? '📡 Connesso — dati live' : 'Non connesso';
+}
+
+async function connetti() {
   $('err').textContent = '';
   try {
     device = await navigator.bluetooth.requestDevice({
       filters: [{ name: 'Arnia01' }],
-      optionalServices: []
-    });
-    $('stato').textContent = 'Trovata: ' + device.name + ' — ascolto advertising...';
-
-    if (!device.watchAdvertisements) {
-      $('err').textContent =
-        'Il tuo Chrome non espone watchAdvertisements. Attiva chrome://flags/#enable-experimental-web-platform-features e riprova.';
-      return;
-    }
-
-    device.addEventListener('advertisementreceived', ev => {
-      const sd = ev.serviceData.get('0000fcd2-0000-1000-8000-00805f9b34fb');
-      if (!sd) return;
-      const r = decodificaBTHome(sd);
-      if (r) {
-        $('stato').textContent = '📡 In ricezione da ' + device.name;
-        aggiorna(r.masse, r.seq, ev.rssi);
-      }
+      optionalServices: [UUID_SERVIZIO]
     });
 
-    await device.watchAdvertisements();
+    device.addEventListener('gattserverdisconnected', () => setConnesso(false));
+
+    $('stato').textContent = 'Connessione...';
+    const server  = await device.gatt.connect();
+    const serv    = await server.getPrimaryService(UUID_SERVIZIO);
+    const chPesi  = await serv.getCharacteristic(UUID_PESI);
+
+    chPesi.addEventListener('characteristicvaluechanged',
+                            ev => mostraPesi(ev.target.value));
+    await chPesi.startNotifications();
+
+    // lettura iniziale immediata, senza aspettare la prima notifica
+    try { mostraPesi(await chPesi.readValue()); } catch (e) {}
+
+    setConnesso(true);
   } catch (e) {
     $('err').textContent = e.message || String(e);
-    $('stato').textContent = 'Non connesso';
+    setConnesso(false);
   }
 }
 
-$('btn').addEventListener('click', cerca);
+function disconnetti() {
+  if (device && device.gatt.connected) device.gatt.disconnect();
+  setConnesso(false);
+}
+
+$('btn').addEventListener('click', () => connesso ? disconnetti() : connetti());
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 </script>
