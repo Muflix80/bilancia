@@ -350,12 +350,27 @@
   </div>
 
   <div id="log"></div>
+  <div id="debugDati" style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--cera-fioca);text-align:center;word-break:break-all;"></div>
 
 </div>
 
 <script>
 (() => {
   'use strict';
+
+  // Elimina qualsiasi service worker e cache residui dalla vecchia
+  // pagina: se erano rimasti registrati, potevano servire una copia
+  // vecchia di questo stesso file anche dopo un aggiornamento su
+  // GitHub, spiegando dati che sul telefono restano fermi mentre
+  // nRF Connect (che non passa dal browser) li vede cambiare.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(regs => {
+      regs.forEach(reg => reg.unregister());
+    });
+  }
+  if (window.caches) {
+    caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+  }
 
   const SVC        = 'b1ee0001-0000-1000-8000-00805f9b34fb';
   const CHR_DATI    = 'b1ee0002-0000-1000-8000-00805f9b34fb';
@@ -399,6 +414,18 @@
   }
 
   // ---------------------------------------------------------- lettura
+
+  // DIAGNOSTICA TEMPORANEA: mostra i byte grezzi ricevuti, per vedere
+  // con certezza se il dato che arriva cambia davvero o no. Da
+  // togliere una volta chiarito il problema.
+  function hexDump(dv){
+    let s = '';
+    for (let i = 0; i < dv.byteLength; i++){
+      const b = dv.getUint8(i);
+      s += (b < 16 ? '0' : '') + b.toString(16) + ' ';
+    }
+    return s.trim();
+  }
 
   function leggiDati(dv){
     const grammi = [dv.getInt16(0,true), dv.getInt16(2,true), dv.getInt16(4,true), dv.getInt16(6,true)];
@@ -506,7 +533,9 @@
       chrConfig  = await svc.getCharacteristic(CHR_CONFIG);
 
       chrDati.addEventListener('characteristicvaluechanged', (ev) => {
-        mostraDati(leggiDati(ev.target.value));
+        const dv = ev.target.value;
+        $('debugDati').textContent = new Date().toLocaleTimeString() + '  ' + hexDump(dv);
+        mostraDati(leggiDati(dv));
       });
       await chrDati.startNotifications();
 
@@ -516,7 +545,11 @@
       await chrConfig.startNotifications();
 
       // primo valore, senza aspettare la prima notifica
-      try { mostraDati(leggiDati(await chrDati.readValue())); } catch(e){}
+      try {
+        const dv0 = await chrDati.readValue();
+        $('debugDati').textContent = new Date().toLocaleTimeString() + ' (iniziale)  ' + hexDump(dv0);
+        mostraDati(leggiDati(dv0));
+      } catch(e){}
       try { mostraConfig(leggiConfig(await chrConfig.readValue())); } catch(e){}
 
       stato(true, false);
