@@ -492,7 +492,7 @@
       log('Cerco il modulo…');
       stato(false, true);
       device = await navigator.bluetooth.requestDevice({
-        filters: [{ namePrefix: 'arnia' }],
+        acceptAllDevices: true,
         optionalServices: [SVC]
       });
       $('nomeDispositivo').textContent = device.name || '';
