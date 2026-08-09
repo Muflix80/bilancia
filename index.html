@@ -492,7 +492,8 @@
       log('Cerco il modulo…');
       stato(false, true);
       device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: [SVC] }]
+        filters: [{ namePrefix: 'arnia' }],
+        optionalServices: [SVC]
       });
       $('nomeDispositivo').textContent = device.name || '';
       device.addEventListener('gattserverdisconnected', alDisconnesso);
