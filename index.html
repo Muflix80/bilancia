@@ -522,6 +522,21 @@ function hexDump(dv){
 // Aggiornato il 21/8/26: 'totale' e' passato da int16 a int32 (era
 // l'overflow sopra 32,767 kg), il che sposta avanti di 2 byte tutti i
 // campi successivi. La PWA leggeva ancora il vecchio layout a 19 byte.
+//
+// Aggiornato il 21/8/26 (bis): la struct C e' davvero di 21 byte
+// (verificato leggendo il sorgente sul disco), ma sul campo la
+// notifica BLE e' arrivata a 20 byte - manca sempre e solo l'ultimo
+// campo, 'flag'. Causa quasi certa: l'MTU ATT di default e' 23 byte,
+// di cui 3 di intestazione del protocollo, quindi 20 byte utili per
+// pacchetto quando non c'e' stata una negoziazione MTU piu' larga fra
+// telefono/browser e modulo - il notify viene troncato in coda dallo
+// stack BLE stesso, la caratteristica resta dichiarata a 21 byte ma
+// quello che arriva e' il prefisso che ci sta nell'MTU. Non e' un
+// problema risolvibile lato PWA (Web Bluetooth non espone una
+// richiesta di MTU esplicita), quindi qui si accettano ENTRAMBE le
+// lunghezze: se arrivano 21 byte il flag si legge normalmente, se ne
+// arrivano 20 il flag e' considerato non disponibile invece di essere
+// letto a un offset che non esiste nel pacchetto ricevuto.
 const DATI_OFF = {
   grammi:     0,   // int16 x4 (8 byte): 0,2,4,6
   totale:     8,   // int32 (4 byte)
@@ -530,9 +545,10 @@ const DATI_OFF = {
   battPct:   15,   // uint8
   voltMilli: 16,   // uint16
   inclTotX10:18,   // int16
-  flag:      20,   // uint8
+  flag:      20,   // uint8 - spesso troncato dall'MTU BLE, vedi sopra
 };
-const DATI_LEN = 21;
+const DATI_LEN = 21;          // dimensione piena della struct C (con flag)
+const DATI_LEN_TRONCO = 20;   // dimensione osservata quando l'MTU tronca il flag
 
 // Layout autoritativo: struct ConfigLive nello stesso firmware
 // (caratteristica B1EE0004). Non toccata dal cambio di cui sopra,
@@ -549,9 +565,9 @@ const CONFIG_OFF = {
 const CONFIG_LEN = 8;
 
 function leggiDati(dv){
-  if (dv.byteLength !== DATI_LEN) {
+  if (dv.byteLength !== DATI_LEN && dv.byteLength !== DATI_LEN_TRONCO) {
     log('Dati BLE: ricevuti ' + dv.byteLength + ' byte, ne attendevo ' +
-        DATI_LEN + ' - firmware e PWA non allineati?', 'errore');
+        DATI_LEN_TRONCO + ' o ' + DATI_LEN + ' - firmware e PWA non allineati?', 'errore');
     return null;   // meglio non aggiornare la schermata che leggere offset a caso
   }
   const o = DATI_OFF;
@@ -563,8 +579,12 @@ function leggiDati(dv){
   const battPct= dv.getUint8(o.battPct);
   const volt   = dv.getUint16(o.voltMilli,true) / 1000;
   const inclTot= dv.getInt16(o.inclTotX10,true) / 10;
-  const flag   = dv.getUint8(o.flag);
-  return { grammi, totale, temp, umid, battPct, volt, inclTot, flag };
+  // il flag e' l'ultimo byte della struct: se il notify e' arrivato
+  // troncato a 20 byte (vedi nota sopra DATI_OFF) semplicemente non
+  // c'e' - non va inventato leggendo un offset fuori dal buffer.
+  const flagDisponibile = dv.byteLength >= DATI_LEN;
+  const flag = flagDisponibile ? dv.getUint8(o.flag) : 0;
+  return { grammi, totale, temp, umid, battPct, volt, inclTot, flag, flagDisponibile };
 }
 
 function leggiConfig(dv){
@@ -597,12 +617,18 @@ function mostraDati(d){
   $('gIncl').innerHTML = d.inclTot.toFixed(1)+'<span class="unita">°</span>';
 
   const badge = [];
-  if (d.flag & FLAG_MOVIMENTO)  badge.push('Movimento rilevato');
-  if (d.flag & FLAG_INCLINATA)  badge.push('Inclinazione fuori soglia');
-  if (d.flag & FLAG_BATT_BASSA) badge.push('Batteria scarica');
-  if (d.flag & FLAG_NON_CALIB)  badge.push('Non calibrata');
-  if (d.flag & FLAG_CELLA_KO)   badge.push('Una cella non risponde');
-  if (d.flag & FLAG_SBALZO)     badge.push('Sbalzo di peso');
+  if (!d.flagDisponibile) {
+    // notify BLE arrivato troncato a 20 byte (MTU): il flag non c'e'
+    // in questo pacchetto, meglio dirlo che mostrare "tutto ok" a caso
+    badge.push('Stato non disponibile (BLE troncato)');
+  } else {
+    if (d.flag & FLAG_MOVIMENTO)  badge.push('Movimento rilevato');
+    if (d.flag & FLAG_INCLINATA)  badge.push('Inclinazione fuori soglia');
+    if (d.flag & FLAG_BATT_BASSA) badge.push('Batteria scarica');
+    if (d.flag & FLAG_NON_CALIB)  badge.push('Non calibrata');
+    if (d.flag & FLAG_CELLA_KO)   badge.push('Una cella non risponde');
+    if (d.flag & FLAG_SBALZO)     badge.push('Sbalzo di peso');
+  }
   $('rigaBadge').innerHTML = badge.map(t => `<div class="badge">${t}</div>`).join('');
 }
 
@@ -793,29 +819,3 @@ document.querySelectorAll('[data-cfg]').forEach(btn => {
     if (tipo === 'b') await invia(cmdSogliaAllarmeBatt(parseInt($('cfgSogliaAllarmeBatt').value, 10)));
     log('Impostazione salvata.', 'successo');
   });
-});
-
-// --- nuovi: taratura per cella ---
-document.querySelectorAll('.btnZeroCella').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const n = parseInt(btn.dataset.cella, 10);
-    await invia(cmdZeroCella(n));
-    log('Zero cella ' + n + ' inviato.', 'successo');
-  });
-});
-
-document.querySelectorAll('.btnCalibraCella').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    const n = parseInt(btn.dataset.cella, 10);
-    const kg = parseFloat($('pesoCella' + n).value);
-    if (!kg || kg <= 0) { log('Inserisci un peso valido per la cella ' + n + '.', 'errore'); return; }
-    await invia(cmdCalibraCella(n, kg));
-    log('Calibrazione cella ' + n + ' inviata con ' + kg + ' kg.', 'successo');
-  });
-});
-
-supportaBluetooth();
-})();
-</script>
-</body>
-</html>
