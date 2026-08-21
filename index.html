@@ -404,6 +404,30 @@ footer .btn{ margin: 0 auto; }
         </div>
         <p class="nota">Il modulo non restituisce il valore attualmente impostato (non è nel pacchetto di configurazione): il campo resta vuoto finché non invii un nuovo valore.</p>
       </div>
+      <div class="campo-config">
+        <div class="riga">
+          <div style="flex:1"><label for="cfgSogliaTaglio">Soglia taglio sottotensione (mV)</label>
+          <input type="number" id="cfgSogliaTaglio" min="0" max="4000" step="1" placeholder="es. 3300 (0 = disattiva)"></div>
+          <button class="btn btn-scuro" data-cfg="u">Salva</button>
+        </div>
+        <p class="nota">Sotto questa tensione il modulo smette di trasmettere ed entra in sonno. Metti 0 per disattivare il taglio (utile durante le misure di consumo col Pokit, che abbassa la lettura del partitore).</p>
+      </div>
+      <div class="campo-config">
+        <div class="riga">
+          <div style="flex:1"><label for="cfgSogliaRientro">Soglia rientro sottotensione (mV)</label>
+          <input type="number" id="cfgSogliaRientro" min="2800" max="4200" step="1" placeholder="es. 3450"></div>
+          <button class="btn btn-scuro" data-cfg="y">Salva</button>
+        </div>
+        <p class="nota">Tensione oltre la quale il modulo riprende a trasmettere dopo un taglio. Deve stare sopra la soglia di taglio, altrimenti oscilla acceso/spento.</p>
+      </div>
+      <div class="campo-config">
+        <div class="riga">
+          <div style="flex:1"><label for="cfgSogliaAllarmeBatt">Soglia allarme batteria (mV)</label>
+          <input type="number" id="cfgSogliaAllarmeBatt" min="2800" max="4200" step="1" placeholder="es. 3500"></div>
+          <button class="btn btn-scuro" data-cfg="b">Salva</button>
+        </div>
+        <p class="nota">Sotto questa tensione il modulo alza il flag di batteria scarica nei pacchetti, senza smettere di trasmettere. Può stare sopra la soglia di rientro.</p>
+      </div>
       <p class="nota">Celle rilevate: <span id="cfgNCelle">—</span> · Calibrata: <span id="cfgCalibrato">—</span> · Assetto: <span id="cfgAssetto">—</span></p>
     </details>
   </section>
@@ -492,27 +516,72 @@ function hexDump(dv){
   return s.trim();
 }
 
+// Layout autoritativo: struct DatiLive in arnia_con_sonno_e_4_celle.ino
+// (caratteristica B1EE0002). Un punto solo da aggiornare se il layout
+// cambia ancora - non piu' offset sparsi nelle chiamate a getInt16/ecc.
+// Aggiornato il 21/8/26: 'totale' e' passato da int16 a int32 (era
+// l'overflow sopra 32,767 kg), il che sposta avanti di 2 byte tutti i
+// campi successivi. La PWA leggeva ancora il vecchio layout a 19 byte.
+const DATI_OFF = {
+  grammi:     0,   // int16 x4 (8 byte): 0,2,4,6
+  totale:     8,   // int32 (4 byte)
+  tempCenti: 12,   // int16
+  umidMezzi: 14,   // uint8
+  battPct:   15,   // uint8
+  voltMilli: 16,   // uint16
+  inclTotX10:18,   // int16
+  flag:      20,   // uint8
+};
+const DATI_LEN = 21;
+
+// Layout autoritativo: struct ConfigLive nello stesso firmware
+// (caratteristica B1EE0004). Non toccata dal cambio di cui sopra,
+// ma tenuta con lo stesso schema per non ripetere il problema.
+const CONFIG_OFF = {
+  nodeId:       0,  // uint8
+  intervallo_s: 1,  // uint16
+  sogliaMov:    3,  // uint8
+  sogliaIncl:   4,  // uint8
+  nCelle:       5,  // uint8
+  calibrato:    6,  // uint8 (0/1)
+  assettoValido:7,  // uint8 (0/1)
+};
+const CONFIG_LEN = 8;
+
 function leggiDati(dv){
-  const grammi = [dv.getInt16(0,true), dv.getInt16(2,true), dv.getInt16(4,true), dv.getInt16(6,true)];
-  const totale = dv.getInt16(8,true);
-  const temp   = dv.getInt16(10,true) / 100;
-  const umid   = dv.getUint8(12) / 2;
-  const battPct= dv.getUint8(13);
-  const volt   = dv.getUint16(14,true) / 1000;
-  const inclTot= dv.getInt16(16,true) / 10;
-  const flag   = dv.getUint8(18);
+  if (dv.byteLength !== DATI_LEN) {
+    log('Dati BLE: ricevuti ' + dv.byteLength + ' byte, ne attendevo ' +
+        DATI_LEN + ' - firmware e PWA non allineati?', 'errore');
+    return null;   // meglio non aggiornare la schermata che leggere offset a caso
+  }
+  const o = DATI_OFF;
+  const grammi = [dv.getInt16(o.grammi,true), dv.getInt16(o.grammi+2,true),
+                  dv.getInt16(o.grammi+4,true), dv.getInt16(o.grammi+6,true)];
+  const totale = dv.getInt32(o.totale,true);
+  const temp   = dv.getInt16(o.tempCenti,true) / 100;
+  const umid   = dv.getUint8(o.umidMezzi) / 2;
+  const battPct= dv.getUint8(o.battPct);
+  const volt   = dv.getUint16(o.voltMilli,true) / 1000;
+  const inclTot= dv.getInt16(o.inclTotX10,true) / 10;
+  const flag   = dv.getUint8(o.flag);
   return { grammi, totale, temp, umid, battPct, volt, inclTot, flag };
 }
 
 function leggiConfig(dv){
+  if (dv.byteLength !== CONFIG_LEN) {
+    log('Config BLE: ricevuti ' + dv.byteLength + ' byte, ne attendevo ' +
+        CONFIG_LEN + ' - firmware e PWA non allineati?', 'errore');
+    return null;   // meglio non aggiornare la schermata che leggere offset a caso
+  }
+  const o = CONFIG_OFF;
   return {
-    nodeId: dv.getUint8(0),
-    intervallo_s: dv.getUint16(1,true),
-    sogliaMov: dv.getUint8(3),
-    sogliaIncl: dv.getUint8(4),
-    nCelle: dv.getUint8(5),
-    calibrato: dv.getUint8(6) === 1,
-    assettoValido: dv.getUint8(7) === 1,
+    nodeId: dv.getUint8(o.nodeId),
+    intervallo_s: dv.getUint16(o.intervallo_s,true),
+    sogliaMov: dv.getUint8(o.sogliaMov),
+    sogliaIncl: dv.getUint8(o.sogliaIncl),
+    nCelle: dv.getUint8(o.nCelle),
+    calibrato: dv.getUint8(o.calibrato) === 1,
+    assettoValido: dv.getUint8(o.assettoValido) === 1,
   };
 }
 
@@ -596,6 +665,29 @@ function cmdSogliaSbalzo(g){
   return new Uint8Array(buf);
 }
 
+// --- nuovi: soglie sottotensione / allarme batteria ---
+function cmdSogliaTaglio(mv){
+  const buf = new ArrayBuffer(3);
+  const dv = new DataView(buf);
+  dv.setUint8(0, 0x75);        // 'u'
+  dv.setUint16(1, mv, true);
+  return new Uint8Array(buf);
+}
+function cmdSogliaRientro(mv){
+  const buf = new ArrayBuffer(3);
+  const dv = new DataView(buf);
+  dv.setUint8(0, 0x79);        // 'y'
+  dv.setUint16(1, mv, true);
+  return new Uint8Array(buf);
+}
+function cmdSogliaAllarmeBatt(mv){
+  const buf = new ArrayBuffer(3);
+  const dv = new DataView(buf);
+  dv.setUint8(0, 0x62);        // 'b'
+  dv.setUint16(1, mv, true);
+  return new Uint8Array(buf);
+}
+
 // ---------------------------------------------------------- connessione
 
 async function connetti(){
@@ -619,12 +711,14 @@ async function connetti(){
     chrDati.addEventListener('characteristicvaluechanged', (ev) => {
       const dv = ev.target.value;
       $('debugDati').textContent = new Date().toLocaleTimeString() + ' ' + hexDump(dv);
-      mostraDati(leggiDati(dv));
+      const d = leggiDati(dv);
+      if (d) mostraDati(d);
     });
     await chrDati.startNotifications();
 
     chrConfig.addEventListener('characteristicvaluechanged', (ev) => {
-      mostraConfig(leggiConfig(ev.target.value));
+      const c = leggiConfig(ev.target.value);
+      if (c) mostraConfig(c);
     });
     await chrConfig.startNotifications();
 
@@ -632,9 +726,13 @@ async function connetti(){
     try {
       const dv0 = await chrDati.readValue();
       $('debugDati').textContent = new Date().toLocaleTimeString() + ' (iniziale) ' + hexDump(dv0);
-      mostraDati(leggiDati(dv0));
+      const d0 = leggiDati(dv0);
+      if (d0) mostraDati(d0);
     } catch(e){}
-    try { mostraConfig(leggiConfig(await chrConfig.readValue())); } catch(e){}
+    try {
+      const c0 = leggiConfig(await chrConfig.readValue());
+      if (c0) mostraConfig(c0);
+    } catch(e){}
 
     stato(true, false);
     $('schermataIniziale').style.display = 'none';
@@ -690,6 +788,9 @@ document.querySelectorAll('[data-cfg]').forEach(btn => {
     if (tipo === 'g') await invia(cmdSogliaIncl(parseInt($('cfgSogliaIncl').value, 10)));
     if (tipo === 'm') await invia(cmdSogliaMov(parseInt($('cfgSogliaMov').value, 10)));
     if (tipo === 'p') await invia(cmdSogliaSbalzo(parseInt($('cfgSogliaSbalzo').value, 10)));
+    if (tipo === 'u') await invia(cmdSogliaTaglio(parseInt($('cfgSogliaTaglio').value, 10)));
+    if (tipo === 'y') await invia(cmdSogliaRientro(parseInt($('cfgSogliaRientro').value, 10)));
+    if (tipo === 'b') await invia(cmdSogliaAllarmeBatt(parseInt($('cfgSogliaAllarmeBatt').value, 10)));
     log('Impostazione salvata.', 'successo');
   });
 });
