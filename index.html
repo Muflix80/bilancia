@@ -819,3 +819,29 @@ document.querySelectorAll('[data-cfg]').forEach(btn => {
     if (tipo === 'b') await invia(cmdSogliaAllarmeBatt(parseInt($('cfgSogliaAllarmeBatt').value, 10)));
     log('Impostazione salvata.', 'successo');
   });
+});
+
+// --- nuovi: taratura per cella ---
+document.querySelectorAll('.btnZeroCella').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const n = parseInt(btn.dataset.cella, 10);
+    await invia(cmdZeroCella(n));
+    log('Zero cella ' + n + ' inviato.', 'successo');
+  });
+});
+
+document.querySelectorAll('.btnCalibraCella').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const n = parseInt(btn.dataset.cella, 10);
+    const kg = parseFloat($('pesoCella' + n).value);
+    if (!kg || kg <= 0) { log('Inserisci un peso valido per la cella ' + n + '.', 'errore'); return; }
+    await invia(cmdCalibraCella(n, kg));
+    log('Calibrazione cella ' + n + ' inviata con ' + kg + ' kg.', 'successo');
+  });
+});
+
+supportaBluetooth();
+})();
+</script>
+</body>
+</html>
