@@ -2,1826 +2,846 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2B1B0E">
-<title>Arnie</title>
-<link rel="manifest" href="/manifest.json">
-<link rel="icon" href="/icona-192.png" sizes="192x192" type="image/png">
-<link rel="apple-touch-icon" sizes="180x180" href="/icona-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Arnie">
+<title>Arnia — bilancia</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-
-<!-- Chart.js + zoom. hammer.js serve al plugin per il pizzico su telefono
-     e va caricato PRIMA del plugin. Nessuna build, solo CDN. -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
-
 <style>
-  :root{
-    --legno:      #2B1B0E;
-    --legno-alto: #3D2817;
-    --legno-riga: #4A3220;
-    --cera:       #F0DEB4;
-    --cera-fioca: #C9B48C;
-    --miele:      #E8A93B;
-    --miele-forte:#F4C568;
-    --ok:         #8FA876;
-    --allerta:    #C4562A;
-    --stazione:   #7E9AA6;   /* colore proprio della sezione stazione */
-  }
-  *{ box-sizing:border-box; }
-  html,body{
-    margin:0; padding:0;
-    background:var(--legno);
-    color:var(--cera);
-    font-family:'Work Sans', system-ui, sans-serif;
-  }
-  body{ padding:22px 16px 40px; }
-  .pagina{ max-width:720px; margin:0 auto; }
-  h1,h2{ font-family:'Fraunces', serif; margin:0; }
-  .num{ font-family:'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
-  [hidden]{ display:none !important; }
+:root{
+  --legno: #2B1B0E;
+  --legno-alto: #3D2817;
+  --legno-riga: #4A3220;
+  --cera: #F0DEB4;
+  --cera-fioca: #C9B48C;
+  --miele: #E8A93B;
+  --miele-forte:#F4C568;
+  --ok: #8FA876;
+  --allerta: #C4562A;
+  --raggio: 14px;
+}
+*{ box-sizing:border-box; }
+html,body{
+  margin:0; padding:0;
+  background:var(--legno);
+  color:var(--cera);
+  font-family:'Work Sans', system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+body{
+  min-height:100vh;
+  min-height:100dvh;
+  padding: max(20px, env(safe-area-inset-top)) 18px max(28px, env(safe-area-inset-bottom));
+  display:flex;
+  justify-content:center;
+}
+.pagina{ width:100%; max-width:480px; }
+h1,h2,h3{ font-family:'Fraunces', serif; margin:0; }
+.num{ font-family:'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
 
-  header{
-    display:flex; justify-content:space-between; align-items:center;
-    margin-bottom:14px; flex-wrap:wrap; gap:10px;
-  }
-  header h1{ font-size:24px; font-weight:600; }
-  #aggiornato{ font-size:12.5px; color:var(--cera-fioca); font-family:'IBM Plex Mono',monospace; }
+header{
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:22px;
+}
+.titolo{ display:flex; flex-direction:column; gap:2px; }
+.titolo h1{ font-size:22px; font-weight:600; letter-spacing:.2px; }
+.titolo .nome-dev{
+  font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--cera-fioca);
+  min-height:15px;
+}
+.puntino{
+  width:10px; height:10px; border-radius:50%;
+  background:var(--allerta); flex-shrink:0;
+  box-shadow: 0 0 0 3px rgba(196,86,42,.18);
+  transition: background .3s, box-shadow .3s;
+}
+.puntino.ok{ background:var(--ok); box-shadow: 0 0 0 3px rgba(143,168,118,.2); }
+.puntino.cerco{ animation: pulsa 1.1s ease-in-out infinite; }
+@keyframes pulsa{
+  0%,100%{ opacity:1; } 50%{ opacity:.35; }
+}
+.riga-stato{ display:flex; align-items:center; gap:9px; }
 
-  /* Le linguette sono generate: una per Stazione, una per ogni arnia
-     conosciuta dal server (in ordine numerico), una per Allarmi. Il
-     colore identifica il tipo di scheda tramite --colore-linguetta
-     (impostato inline per le arnie, dato che sono dinamiche), il
-     riempimento dice dove sei: il colore da solo non basterebbe a
-     distinguere l'attiva dall'altra. */
-  .linguette{ display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap; }
-  .linguetta{
-    --colore-linguetta: var(--miele);
-    font-family:'Work Sans', sans-serif;
-    font-size:13px; font-weight:600;
-    text-decoration:none;
-    border-radius:999px;
-    padding:8px 18px;
-    border:1px solid;
-    background:transparent;
-    color:var(--colore-linguetta);
-    border-color:color-mix(in srgb, var(--colore-linguetta) 45%, transparent);
-  }
-  .linguetta.attiva{
-    background:var(--colore-linguetta);
-    border-color:var(--colore-linguetta);
-    color:var(--legno);
-  }
-  .linguetta.staz{ --colore-linguetta: var(--stazione); }
-  .linguetta.allarmi{ --colore-linguetta: var(--allerta); }
-  .linguetta:focus-visible{ outline:2px solid var(--cera); outline-offset:2px; }
+.btn{
+  font-family:'Work Sans', sans-serif;
+  font-weight:600; font-size:15px;
+  border:none; border-radius:999px;
+  padding:15px 22px;
+  cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  transition: transform .12s ease, filter .12s ease;
+  -webkit-user-select:none; user-select:none;
+}
+.btn:active{ transform: scale(0.97); }
+.btn-miele{ background:var(--miele); color:#241505; }
+.btn-miele:hover{ filter:brightness(1.06); }
+.btn-scuro{ background:var(--legno-alto); color:var(--cera); border:1px solid var(--legno-riga); }
+.btn-scuro:hover{ filter:brightness(1.15); }
+.btn-allerta{ background:transparent; color:var(--cera-fioca); border:1px solid var(--legno-riga); }
+.btn:disabled{ opacity:.4; cursor:default; }
+.btn-blocco{ width:100%; }
 
-  .bottone{
-    display:inline-block;
-    font-family:'Work Sans', sans-serif;
-    font-size:12.5px; font-weight:500;
-    color:var(--cera); text-decoration:none;
-    background:var(--legno-alto);
-    border:1px solid var(--legno-riga);
-    border-radius:999px;
-    padding:6px 13px; cursor:pointer;
-  }
-  .bottone:hover{ border-color:var(--miele); color:var(--miele-forte); }
-  .bottone:focus-visible{ outline:2px solid var(--miele); outline-offset:2px; }
-  .bottone.principale{ background:var(--miele); color:var(--legno); border-color:var(--miele); font-weight:600; }
-  .bottone.mini{ font-size:11px; padding:3px 9px; }
+.schermata-iniziale{
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  padding: 18vh 10px 0;
+  gap:18px;
+}
+.schermata-iniziale .icona-favo{
+  width:64px; height:64px; opacity:.85;
+}
+.schermata-iniziale p{
+  color:var(--cera-fioca); font-size:14.5px; line-height:1.55; max-width:320px;
+  margin:0;
+}
 
-  .arnia{
-    background:var(--legno-alto);
-    border:1px solid var(--legno-riga);
-    border-radius:16px;
-    padding:22px 20px;
-    margin-bottom:20px;
-  }
-  .arnia.stazione{ border-color:rgba(126,154,166,.45); }
-  .arnia-testata{
-    display:flex; justify-content:space-between; align-items:flex-start;
-    gap:12px; margin-bottom:14px;
-  }
-  .arnia-testata h2{ font-size:19px; }
-  .arnia-testata .quando{ font-size:12px; color:var(--cera-fioca); margin-top:2px; }
+#pannello{ display:none; }
+#pannello.visibile{ display:block; }
 
-  .peso-tot{ font-size:46px; color:var(--miele-forte); line-height:1; margin-bottom:4px; }
-  .peso-tot .unita{ font-size:19px; color:var(--cera-fioca); margin-left:6px; }
+.stadera{
+  background:var(--legno-alto);
+  border:1px solid var(--legno-riga);
+  border-radius:var(--raggio);
+  padding:26px 22px 20px;
+  margin-bottom:16px;
+  text-align:center;
+  position:relative;
+}
+.stadera .etichetta{
+  font-size:12px; letter-spacing:1.2px; text-transform:uppercase;
+  color:var(--cera-fioca); margin-bottom:6px;
+}
+.stadera .peso-tot{
+  font-size:58px; line-height:1;
+  color:var(--miele-forte);
+  font-weight:500;
+}
+.stadera .peso-tot .unita{
+  font-size:22px; color:var(--cera-fioca); margin-left:6px;
+}
+.piedini{
+  display:flex; justify-content:center; gap:22px;
+  margin-top:18px; padding-top:16px;
+  border-top:1px dashed var(--legno-riga);
+}
+.piede{ text-align:center; min-width:46px; }
+.piede .n{ font-size:10px; color:var(--cera-fioca); letter-spacing:.5px; }
+.piede .v{ font-size:14px; margin-top:2px; }
 
-  .piedini{ display:flex; gap:18px; margin:12px 0 16px; padding-bottom:14px; border-bottom:1px dashed var(--legno-riga); }
-  .piede{ font-size:13px; color:var(--cera-fioca); }
-  .piede b{ color:var(--cera); font-weight:500; }
+.badge-riga{ display:flex; flex-wrap:wrap; gap:8px; margin: 0 0 16px; min-height:1px; }
+.badge{
+  font-size:12.5px; font-weight:500;
+  background: rgba(196,86,42,.16);
+  color:#F0B491;
+  border:1px solid rgba(196,86,42,.4);
+  padding:6px 12px; border-radius:999px;
+  display:flex; align-items:center; gap:6px;
+}
+.badge::before{ content:"●"; font-size:8px; color:var(--allerta); }
 
-  .griglia{ display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:10px; margin-bottom:14px; }
-  .gauge{ background:var(--legno); border:1px solid var(--legno-riga); border-radius:10px; padding:10px 12px; }
-  .gauge .etichetta{ font-size:10.5px; color:var(--cera-fioca); text-transform:uppercase; letter-spacing:.5px; }
-  .gauge .valore{ font-size:18px; margin-top:2px; }
-  .gauge .valore .unita{ font-size:12px; color:var(--cera-fioca); }
-  .gauge .minmax{ font-size:9.5px; color:var(--cera-fioca); margin-top:3px; opacity:.85; }
+.griglia{
+  display:grid; grid-template-columns: 1fr 1fr;
+  gap:10px; margin-bottom:16px;
+}
+.gauge{
+  background:var(--legno-alto);
+  border:1px solid var(--legno-riga);
+  border-radius:12px;
+  padding:14px 15px;
+}
+.gauge .etichetta{
+  font-size:11.5px; color:var(--cera-fioca);
+  text-transform:uppercase; letter-spacing:.6px;
+}
+.gauge .valore{ font-size:22px; margin-top:4px; }
+.gauge .valore .unita{ font-size:13px; color:var(--cera-fioca); }
 
-  /* casella dell'accumulo di stagione */
-  .accumulo{
-    background:var(--legno); border:1px solid var(--legno-riga);
-    border-radius:10px; padding:12px 14px; margin-bottom:14px;
-    display:flex; justify-content:space-between; align-items:baseline; gap:12px;
-  }
-  .accumulo .etichetta{ font-size:10.5px; color:var(--cera-fioca); text-transform:uppercase; letter-spacing:.5px; }
-  .accumulo .dal{ font-size:11px; color:var(--cera-fioca); }
-  .accumulo .valore{ font-size:26px; color:var(--miele-forte); }
-  .accumulo .valore .unita{ font-size:13px; color:var(--cera-fioca); }
+section{ margin-bottom:20px; }
+section > h2{
+  font-size:15px; font-weight:600; color:var(--cera);
+  margin-bottom:10px; padding-left:2px;
+}
+.gruppo-btn{ display:flex; gap:10px; }
+.gruppo-btn .btn{ flex:1; }
+.riga-calibra{
+  display:flex; gap:10px; margin-top:10px;
+}
+input[type=number]{
+  font-family:'IBM Plex Mono', monospace; font-size:16px;
+  background:var(--legno); color:var(--cera);
+  border:1px solid var(--legno-riga); border-radius:10px;
+  padding:12px 14px; width:100%;
+}
+input[type=number]:focus{ outline:2px solid var(--miele); outline-offset:1px; }
+label{ font-size:13px; color:var(--cera-fioca); display:block; margin-bottom:6px; }
+.nota{ font-size:12.5px; color:var(--cera-fioca); line-height:1.5; margin-top:8px; }
 
-  /* Allarme "in evidenza": banner pieno in cima alla pagina interessata,
-     finche' nessuno preme "visto". */
-  .allarmi-correnti{ margin-bottom:14px; }
-  .allarme-evidenza{
-    display:flex; justify-content:space-between; align-items:center; gap:12px;
-    background:rgba(196,86,42,.18); border:1px solid rgba(196,86,42,.5);
-    border-radius:10px; padding:11px 14px; margin-bottom:8px;
-  }
-  .allarme-evidenza-testo{ display:flex; flex-direction:column; gap:2px; }
-  .allarme-evidenza-tipo{ font-size:13.5px; font-weight:600; color:#F0B491; }
-  .allarme-evidenza-quando{ font-size:11px; color:var(--cera-fioca); font-family:'IBM Plex Mono',monospace; }
-  /* Allarme "visto" ma ancora attivo: riga discreta, non puo' sparire con
-     un clic perche' il problema c'e' ancora. */
-  .allarme-discreto{
-    font-size:11.5px; color:var(--cera-fioca);
-    border-left:2px solid rgba(196,86,42,.5);
-    padding:4px 0 4px 10px; margin-bottom:6px;
-  }
+details{
+  background:var(--legno-alto);
+  border:1px solid var(--legno-riga);
+  border-radius:var(--raggio);
+  padding:2px 16px;
+}
+details[open]{ padding-bottom:16px; }
+summary{
+  cursor:pointer; padding:14px 0;
+  font-weight:600; font-size:14.5px;
+  display:flex; justify-content:space-between; align-items:center;
+  list-style:none;
+}
+summary::-webkit-details-marker{ display:none; }
+summary::after{ content:"＋"; color:var(--cera-fioca); font-size:16px; }
+details[open] summary::after{ content:"－"; }
+.campo-config{ margin-top:12px; }
+.campo-config .riga{ display:flex; gap:10px; align-items:flex-end; }
+.campo-config .riga input{ flex:1; }
+.campo-config .riga button{ flex-shrink:0; padding:12px 16px; }
+.blocco-cella{ padding-top:14px; margin-top:14px; border-top:1px dashed var(--legno-riga); }
+.blocco-cella:first-of-type{ padding-top:0; margin-top:0; border-top:none; }
+.blocco-cella .titolo-cella{ font-size:13.5px; font-weight:600; color:var(--cera); margin-bottom:8px; }
 
-  /* riepilogo delle arnie dentro la Stazione */
-  .riepilogo-arnie{ display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin:14px 0; }
-  .riepilogo-arnia{
-    display:block; text-decoration:none; color:inherit;
-    background:var(--legno); border:1px solid var(--legno-riga); border-radius:10px;
-    padding:11px 13px; position:relative;
-  }
-  .riepilogo-arnia:hover{ border-color:var(--miele); }
-  .riepilogo-arnia .nome{ font-size:11px; color:var(--cera-fioca); text-transform:uppercase; letter-spacing:.5px; }
-  .riepilogo-arnia .peso{ font-size:20px; color:var(--miele-forte); font-family:'IBM Plex Mono',monospace; margin-top:2px; }
-  .riepilogo-arnia .delta{ font-size:11.5px; margin-top:3px; font-family:'IBM Plex Mono',monospace; }
-  .riepilogo-arnia .delta.su{ color:var(--ok); }
-  .riepilogo-arnia .delta.giu{ color:#F0B491; }
-  .riepilogo-arnia .puntino-allarme{
-    position:absolute; top:10px; right:10px;
-    width:9px; height:9px; border-radius:50%;
-    background:var(--allerta);
-  }
+#log{
+  margin-top:18px;
+  font-family:'IBM Plex Mono', monospace; font-size:12px;
+  color:var(--cera-fioca);
+  min-height:18px;
+  text-align:center;
+  transition: opacity .3s;
+}
+#log.errore{ color:#F0B491; }
+#log.successo{ color:var(--ok); }
 
-  /* scheda Allarmi */
-  .allarmi-azioni{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
-  .allarmi-azioni select{
-    background:var(--legno); color:var(--cera); border:1px solid var(--legno-riga);
-    border-radius:8px; padding:6px 9px; font-size:12.5px; font-family:'Work Sans',sans-serif;
-  }
-  table.tabella-allarmi{ width:100%; border-collapse:collapse; font-size:12.5px; }
-  table.tabella-allarmi th{
-    text-align:left; font-size:10.5px; color:var(--cera-fioca); text-transform:uppercase;
-    letter-spacing:.5px; padding:6px 8px; border-bottom:1px solid var(--legno-riga);
-  }
-  table.tabella-allarmi td{ padding:7px 8px; border-bottom:1px dashed var(--legno-riga); vertical-align:top; }
-  table.tabella-allarmi td.num, table.tabella-allarmi th.num{ font-family:'IBM Plex Mono',monospace; font-size:11.5px; }
-  table.tabella-allarmi tr.riga-prova{ opacity:.55; }
-  .etichetta-stato{
-    font-size:10px; padding:2px 7px; border-radius:999px;
-    border:1px solid var(--legno-riga); color:var(--cera-fioca);
-  }
+footer{
+  margin-top:26px; text-align:center;
+}
+footer .btn{ margin: 0 auto; }
 
-  .badge-riga{ display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin-bottom:10px; }
-  .badge{
-    font-size:11.5px; font-weight:500;
-    background:rgba(196,86,42,.16); color:#F0B491;
-    border:1px solid rgba(196,86,42,.4);
-    padding:4px 10px; border-radius:999px;
-  }
-  .badge.ok{ background:rgba(143,168,118,.15); color:#C4DBAE; border-color:rgba(143,168,118,.4); }
-  .badge.quando-allarme{ background:transparent; color:var(--cera-fioca); border-color:var(--legno-riga); font-family:'IBM Plex Mono',monospace; }
-
-  details.eventi{ margin-bottom:14px; }
-  details.eventi summary{
-    font-size:12px; color:var(--cera-fioca); cursor:pointer;
-    padding:6px 0; list-style:none;
-  }
-  details.eventi summary::-webkit-details-marker{ display:none; }
-  details.eventi summary::before{ content:'▸ '; color:var(--miele); }
-  details.eventi[open] summary::before{ content:'▾ '; }
-  .evento{
-    border-left:2px solid rgba(196,86,42,.5);
-    padding:5px 0 5px 10px; margin:6px 0;
-  }
-  .evento-quando{ font-size:11px; color:var(--cera-fioca); }
-  .evento-cosa{ font-size:13px; }
-  .evento-letture{ font-size:11px; color:var(--cera-fioca); }
-  .nessun-evento{ font-size:12.5px; color:var(--cera-fioca); padding:4px 0; }
-
-  /* modulo per marcare un intervento */
-  .modulo{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:8px 0 4px; }
-  .modulo input{
-    background:var(--legno); color:var(--cera);
-    border:1px solid var(--legno-riga); border-radius:8px;
-    padding:6px 9px; font-size:13px;
-    font-family:'IBM Plex Mono', monospace;
-  }
-  .modulo input[type=text]{ font-family:'Work Sans', sans-serif; flex:1; min-width:130px; }
-  .modulo input.kg{ width:92px; }
-  .modulo input:focus{ outline:none; border-color:var(--miele); }
-  .aiuto-modulo{ font-size:11px; color:var(--cera-fioca); line-height:1.5; margin-bottom:8px; }
-  .riga-intervento{
-    display:flex; align-items:center; gap:9px;
-    font-size:12.5px; padding:5px 0;
-    border-bottom:1px dashed var(--legno-riga);
-  }
-  .riga-intervento .g{ font-family:'IBM Plex Mono',monospace; color:var(--cera-fioca); }
-  .riga-intervento .n{ flex:1; color:var(--cera-fioca); }
-  .esito{ font-size:11.5px; color:var(--ok); margin-bottom:6px; }
-  .esito.male{ color:#F0B491; }
-
-  .tecnico{ font-size:11px; color:var(--cera-fioca); font-family:'IBM Plex Mono',monospace; margin-bottom:14px; word-break:break-word; }
-
-  .grafico-box{ margin-top:16px; }
-  .grafico-testata{
-    display:flex; justify-content:space-between; align-items:center;
-    gap:10px; margin-bottom:6px;
-  }
-  .grafico-etichetta{ font-size:11px; color:var(--cera-fioca); text-transform:uppercase; letter-spacing:.5px; }
-  .tela{ position:relative; height:190px; }
-  .nota-grafico{ font-size:10.5px; color:var(--cera-fioca); font-family:'IBM Plex Mono',monospace; margin-top:5px; }
-
-  /* Pannello di lettura sotto ogni grafico con tooltip nativo disattivato
-     (peso, clima, energia - vedi opzioni()/aggiornaLettura() in JS).
-     Altezza fissa e scroll orizzontale invece di andare a capo: cosi'
-     l'altezza non cambia mai, ne' a riposo ne' con tre serie sotto il
-     dito, ed e' garantito anche sullo schermo piu' stretto. */
-  .lettura-grafico{
-    height:32px; display:flex; align-items:center; gap:16px;
-    overflow-x:auto; overflow-y:hidden; white-space:nowrap;
-    font-size:11px; font-family:'IBM Plex Mono',monospace; color:var(--cera);
-    margin-top:4px; padding-top:4px; border-top:1px dashed var(--legno-riga);
-    scrollbar-width:none;
-  }
-  .lettura-grafico::-webkit-scrollbar{ display:none; }
-  .lettura-grafico .ln-quando{ color:var(--cera-fioca); flex:0 0 auto; }
-  .lettura-grafico .ln-voce{ display:inline-flex; align-items:center; gap:5px; flex:0 0 auto; }
-  .lettura-grafico .ln-pallino{ width:8px; height:8px; border-radius:50%; flex:0 0 auto; }
-  .lettura-grafico .ln-vuoto{ color:var(--cera-fioca); }
-
-  .avviso{
-    font-size:13px; line-height:1.5; color:var(--cera-fioca);
-    background:var(--legno); border:1px dashed var(--legno-riga);
-    border-radius:10px; padding:12px 14px; margin-bottom:16px;
-  }
-  .vuoto{ text-align:center; color:var(--cera-fioca); padding:40px 10px; font-size:14.5px; }
-  .errore{ color:#F0B491; font-size:12.5px; margin-bottom:14px; }
-
-  @media (prefers-reduced-motion: reduce){ *{ transition:none !important; } }
+@media (prefers-reduced-motion: reduce){
+  .puntino.cerco{ animation:none; }
+  .btn{ transition:none; }
+}
 </style>
 </head>
 <body>
 <div class="pagina">
-  <header>
-    <h1>🐝 Arnie</h1>
-    <div id="aggiornato">—</div>
-  </header>
 
-  <!-- Le linguette si costruiscono da sole in JS: Stazione e Allarmi sono
-       fisse, una per arnia si aggiunge da sola scoprendo i nodi dal
-       server (funzione ricostruisciLinguette()). -->
-  <nav class="linguette" id="linguette"></nav>
+<header>
+  <div class="titolo">
+    <h1>Arnia</h1>
+    <div class="nome-dev" id="nomeDispositivo"></div>
+  </div>
+  <div class="riga-stato">
+    <span class="puntino" id="puntinoStato"></span>
+  </div>
+</header>
 
-  <div id="errore-pagina" class="errore" hidden></div>
+<!-- schermata iniziale, prima della connessione -->
+<div class="schermata-iniziale" id="schermataIniziale">
+  <svg class="icona-favo" viewBox="0 0 64 64" fill="none">
+    <path d="M32 4 L54 17 V43 L32 56 L10 43 V17 Z" stroke="#E8A93B" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M32 4 V56 M10 17 L54 43 M54 17 L10 43" stroke="#4A3220" stroke-width="1.4"/>
+  </svg>
+  <p id="testoIniziale">Premi il pulsante sul modulo arnia per aprire la finestra di collegamento (dura due minuti), poi tocca "Connetti".</p>
+  <button class="btn btn-miele btn-blocco" id="btnConnetti">Connetti al modulo</button>
+</div>
 
-  <!-- =========================== vista stazione ========================== -->
-  <section id="vista-stazione">
-    <div class="arnia stazione">
-      <div class="arnia-testata">
-        <div>
-          <h2>Stazione</h2>
-          <div class="quando" id="staz-quando">nessun dato ricevuto</div>
-        </div>
-      </div>
+<!-- pannello principale -->
+<div id="pannello">
 
-      <div class="allarmi-correnti" id="staz-allarmi-correnti"></div>
-
-      <div id="staz-avviso" class="avviso">
-        I sensori della stazione (AHT20, BMP280 e INA219) non stanno ancora
-        mandando dati. La sezione è pronta: appena arrivano pacchetti su
-        <span class="num">/api/concentratore</span>, valori e grafici
-        compaiono qui da soli.
-      </div>
-
-      <div class="griglia">
-        <div class="gauge"><div class="etichetta">Temp.</div><div class="valore num" id="staz-temp">—</div><div class="minmax" id="staz-temp-minmax">—</div></div>
-        <div class="gauge"><div class="etichetta">Umidità</div><div class="valore num" id="staz-umid">—</div><div class="minmax" id="staz-umid-minmax">—</div></div>
-        <div class="gauge"><div class="etichetta">Pressione</div><div class="valore num" id="staz-pres">—</div></div>
-        <div class="gauge"><div class="etichetta">Tensione</div><div class="valore num" id="staz-tens">—</div></div>
-        <div class="gauge"><div class="etichetta">Corrente</div><div class="valore num" id="staz-corr">—</div><div class="minmax" id="staz-corr-minmax">—</div></div>
-      </div>
-
-      <div class="tecnico" id="staz-tecnico" hidden></div>
-
-      <div id="staz-riepilogo-blocco" hidden>
-        <div class="grafico-etichetta" style="margin:16px 0 8px">Le arnie</div>
-        <div class="riepilogo-arnie" id="staz-riepilogo"></div>
-      </div>
-
-      <div id="staz-grafici" hidden>
-        <div class="grafico-box">
-          <div class="grafico-testata">
-            <span class="grafico-etichetta">Ambiente in apiario</span>
-            <button class="bottone" id="staz-reset-clima" type="button">Azzera zoom</button>
-          </div>
-          <div class="tela"><canvas id="staz-tela-clima"></canvas></div>
-          <div class="lettura-grafico" id="staz-lettura-clima"></div>
-        </div>
-
-        <div class="grafico-box">
-          <div class="grafico-testata">
-            <span class="grafico-etichetta">Bilancio energetico</span>
-            <button class="bottone" id="staz-reset-energia" type="button">Azzera zoom</button>
-          </div>
-          <div class="tela"><canvas id="staz-tela-energia"></canvas></div>
-          <div class="lettura-grafico" id="staz-lettura-energia"></div>
-          <div class="nota-grafico" id="staz-nota">—</div>
-        </div>
-      </div>
+  <div class="stadera">
+    <div class="etichetta">Peso totale</div>
+    <div class="peso-tot"><span class="num" id="pesoTotale">—</span><span class="unita">kg</span></div>
+    <div class="piedini">
+      <div class="piede"><div class="n">1</div><div class="v num" id="cella0">—</div></div>
+      <div class="piede"><div class="n">2</div><div class="v num" id="cella1">—</div></div>
+      <div class="piede"><div class="n">3</div><div class="v num" id="cella2">—</div></div>
+      <div class="piede"><div class="n">4</div><div class="v num" id="cella3">—</div></div>
     </div>
+  </div>
+
+  <div class="badge-riga" id="rigaBadge"></div>
+
+  <div class="griglia">
+    <div class="gauge">
+      <div class="etichetta">Temperatura</div>
+      <div class="valore num" id="gTemp">—<span class="unita"> °C</span></div>
+    </div>
+    <div class="gauge">
+      <div class="etichetta">Umidità</div>
+      <div class="valore num" id="gUmid">—<span class="unita"> %</span></div>
+    </div>
+    <div class="gauge">
+      <div class="etichetta">Batteria</div>
+      <div class="valore num" id="gBatt">—<span class="unita"> %</span></div>
+    </div>
+    <div class="gauge">
+      <div class="etichetta">Inclinazione</div>
+      <div class="valore num" id="gIncl">—<span class="unita">°</span></div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Taratura</h2>
+    <div class="gruppo-btn">
+      <button class="btn btn-scuro" id="btnTara">Azzera (a vuoto)</button>
+      <button class="btn btn-scuro" id="btnAssetto">Azzera assetto</button>
+    </div>
+    <div class="riga-calibra">
+      <div style="flex:1">
+        <label for="pesoCalibra">Peso noto sulla bilancia (kg)</label>
+        <input type="number" id="pesoCalibra" inputmode="decimal" step="0.001" placeholder="es. 1.500">
+      </div>
+      <button class="btn btn-miele" id="btnCalibra" style="align-self:flex-end">Calibra</button>
+    </div>
+    <p class="nota">Tara con la bilancia scarica, poi appoggia un peso conosciuto e premi Calibra. Una sola scala per tutte le celle: il totale è corretto, la ripartizione fra i piedi è indicativa.</p>
   </section>
 
-  <!-- ======================= viste arnie (una a testa) ==================== -->
-  <div id="vista-arnie-contenitore"></div>
+  <section>
+    <details id="dettagliCelle">
+      <summary>Taratura per cella (consigliata)</summary>
+      <p class="nota">Ogni cella si tratta come se fosse l'unica: prima "Zero" a piede scarico, poi il peso noto appoggiato <em>solo</em> su quel piede e "Calibra". Ripeti per tutte e quattro — il totale viene dalla somma.</p>
 
-  <!-- =========================== scheda Allarmi =========================== -->
-  <section id="vista-allarmi" hidden>
-    <div class="arnia">
-      <div class="arnia-testata">
-        <div><h2>Allarmi</h2><div class="quando">tutte le sorgenti, in ordine cronologico</div></div>
+      <div class="blocco-cella">
+        <div class="titolo-cella">Cella 1</div>
+        <div class="riga" style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+          <span style="flex:1;color:var(--cera-fioca);font-size:13px">Piede scarico, poi:</span>
+          <button class="btn btn-scuro btnZeroCella" data-cella="1">Zero</button>
+        </div>
+        <div class="riga" style="display:flex;gap:10px;align-items:flex-end">
+          <div style="flex:1">
+            <label for="pesoCella1">Peso noto su cella 1 (kg)</label>
+            <input type="number" id="pesoCella1" inputmode="decimal" step="0.001" placeholder="es. 0.510">
+          </div>
+          <button class="btn btn-miele btnCalibraCella" data-cella="1">Calibra</button>
+        </div>
       </div>
 
-      <div class="allarmi-azioni">
-        <label class="piede">
-          <input type="checkbox" id="all-check-tutti">
-          seleziona tutti
-        </label>
-        <select id="all-filtro-stato">
-          <option value="normale">normali</option>
-          <option value="tutti">tutti (anche prova/cancellati)</option>
-          <option value="prova">solo prova</option>
-          <option value="cancellato">solo cancellati</option>
-        </select>
-        <button class="bottone mini" type="button" id="all-azione-prova">Marca selezionati come prova</button>
-        <button class="bottone mini" type="button" id="all-azione-cancella">Cancella selezionati</button>
-        <button class="bottone mini" type="button" id="all-azione-ripristina">Ripristina selezionati</button>
+      <div class="blocco-cella">
+        <div class="titolo-cella">Cella 2</div>
+        <div class="riga" style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+          <span style="flex:1;color:var(--cera-fioca);font-size:13px">Piede scarico, poi:</span>
+          <button class="btn btn-scuro btnZeroCella" data-cella="2">Zero</button>
+        </div>
+        <div class="riga" style="display:flex;gap:10px;align-items:flex-end">
+          <div style="flex:1">
+            <label for="pesoCella2">Peso noto su cella 2 (kg)</label>
+            <input type="number" id="pesoCella2" inputmode="decimal" step="0.001" placeholder="es. 0.510">
+          </div>
+          <button class="btn btn-miele btnCalibraCella" data-cella="2">Calibra</button>
+        </div>
       </div>
 
-      <div id="all-vuoto" class="vuoto" hidden>Nessun allarme in questo filtro.</div>
-      <div style="overflow-x:auto">
-        <table class="tabella-allarmi" id="all-tabella" hidden>
-          <thead>
-            <tr>
-              <th></th><th>Sorgente</th><th>Tipo</th>
-              <th>Inizio</th><th>Fine</th><th class="num">Durata</th><th>Stato</th>
-            </tr>
-          </thead>
-          <tbody id="all-corpo"></tbody>
-        </table>
+      <div class="blocco-cella">
+        <div class="titolo-cella">Cella 3</div>
+        <div class="riga" style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+          <span style="flex:1;color:var(--cera-fioca);font-size:13px">Piede scarico, poi:</span>
+          <button class="btn btn-scuro btnZeroCella" data-cella="3">Zero</button>
+        </div>
+        <div class="riga" style="display:flex;gap:10px;align-items:flex-end">
+          <div style="flex:1">
+            <label for="pesoCella3">Peso noto su cella 3 (kg)</label>
+            <input type="number" id="pesoCella3" inputmode="decimal" step="0.001" placeholder="es. 0.510">
+          </div>
+          <button class="btn btn-miele btnCalibraCella" data-cella="3">Calibra</button>
+        </div>
       </div>
-    </div>
+
+      <div class="blocco-cella">
+        <div class="titolo-cella">Cella 4</div>
+        <div class="riga" style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+          <span style="flex:1;color:var(--cera-fioca);font-size:13px">Piede scarico, poi:</span>
+          <button class="btn btn-scuro btnZeroCella" data-cella="4">Zero</button>
+        </div>
+        <div class="riga" style="display:flex;gap:10px;align-items:flex-end">
+          <div style="flex:1">
+            <label for="pesoCella4">Peso noto su cella 4 (kg)</label>
+            <input type="number" id="pesoCella4" inputmode="decimal" step="0.001" placeholder="es. 0.510">
+          </div>
+          <button class="btn btn-miele btnCalibraCella" data-cella="4">Calibra</button>
+        </div>
+      </div>
+    </details>
   </section>
+
+  <section>
+    <details id="dettagliConfig">
+      <summary>Configurazione</summary>
+      <div class="campo-config">
+        <div class="riga">
+          <div style="flex:1"><label for="cfgNodeId">Identificativo arnia</label>
+          <input type="number" id="cfgNodeId" min="1" max="254" step="1"></div>
+          <button class="btn btn-scuro" data-cfg="n">Salva</button>
+        </div>
+      </div>
+      <div class="campo-config">
+        <div class="riga">
+          <div style="flex:1"><label for="cfgIntervallo">Intervallo trasmissione (s)</label>
+          <input type="number" id="cfgIntervallo" min="1" max="3600" step="1"></div>
+          <button class="btn btn-scuro" data-cfg="i">Salva</button>
+        </div>
+      </div>
+      <div class="campo-config">
+        <div class="riga">
+          <div style="flex:1"><label for="cfgSogliaIncl">Soglia allarme inclinazione (°)</label>
+          <input type="number" id="cfgSogliaIncl" min="1" max="90" step="1"></div>
+          <button class="btn btn-scuro" data-cfg="g">Salva</button>
+        </div>
+      </div>
+      <div class="campo-config">
+        <div class="riga">
+          <div style="flex:1"><label for="cfgSogliaMov">Soglia allarme movimento</label>
+          <input type="number" id="cfgSogliaMov" min="1" max="127" step="1"></div>
+          <button class="btn btn-scuro" data-cfg="m">Salva</button>
+        </div>
+      </div>
+      <div class="campo-config">
+        <div class="riga">
+          <div style="flex:1"><label for="cfgSogliaSbalzo">Soglia allarme sbalzo peso (g)</label>
+          <input type="number" id="cfgSogliaSbalzo" min="100" max="30000" step="1" placeholder="es. 2000"></div>
+          <button class="btn btn-scuro" data-cfg="p">Salva</button>
+        </div>
+        <p class="nota">Il modulo non restituisce il valore attualmente impostato (non è nel pacchetto di configurazione): il campo resta vuoto finché non invii un nuovo valore.</p>
+      </div>
+      <div class="campo-config">
+        <div class="riga">
+          <div style="flex:1"><label for="cfgSogliaTaglio">Soglia taglio sottotensione (mV)</label>
+          <input type="number" id="cfgSogliaTaglio" min="0" max="4000" step="1" placeholder="es. 3300 (0 = disattiva)"></div>
+          <button class="btn btn-scuro" data-cfg="u">Salva</button>
+        </div>
+        <p class="nota">Sotto questa tensione il modulo smette di trasmettere ed entra in sonno. Metti 0 per disattivare il taglio (utile durante le misure di consumo col Pokit, che abbassa la lettura del partitore).</p>
+      </div>
+      <div class="campo-config">
+        <div class="riga">
+          <div style="flex:1"><label for="cfgSogliaRientro">Soglia rientro sottotensione (mV)</label>
+          <input type="number" id="cfgSogliaRientro" min="2800" max="4200" step="1" placeholder="es. 3450"></div>
+          <button class="btn btn-scuro" data-cfg="y">Salva</button>
+        </div>
+        <p class="nota">Tensione oltre la quale il modulo riprende a trasmettere dopo un taglio. Deve stare sopra la soglia di taglio, altrimenti oscilla acceso/spento.</p>
+      </div>
+      <div class="campo-config">
+        <div class="riga">
+          <div style="flex:1"><label for="cfgSogliaAllarmeBatt">Soglia allarme batteria (mV)</label>
+          <input type="number" id="cfgSogliaAllarmeBatt" min="2800" max="4200" step="1" placeholder="es. 3500"></div>
+          <button class="btn btn-scuro" data-cfg="b">Salva</button>
+        </div>
+        <p class="nota">Sotto questa tensione il modulo alza il flag di batteria scarica nei pacchetti, senza smettere di trasmettere. Può stare sopra la soglia di rientro.</p>
+      </div>
+      <p class="nota">Celle rilevate: <span id="cfgNCelle">—</span> · Calibrata: <span id="cfgCalibrato">—</span> · Assetto: <span id="cfgAssetto">—</span></p>
+    </details>
+  </section>
+
+  <footer>
+    <button class="btn btn-allerta" id="btnDisconnetti">Disconnetti</button>
+  </footer>
+
+</div>
+
+<div id="log"></div>
+<div id="debugDati" style="margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--cera-fioca);text-align:center;word-break:break-all;"></div>
+
 </div>
 
 <script>
-/* ====================================================================
-   Impostazioni
-   ==================================================================== */
-const CFG = {
-  giorni: 30,           // finestra CARICATA dal server, poi si zooma in memoria
-  vistaGiorni: 7,       // finestra MOSTRATA all'apertura sui grafici arnia
-  vistaGiorniStaz: 2,   // sulla stazione conta il ciclo giorno/notte, non la settimana
-  giorniDelta: 30,      // barre dell'istogramma
-  maxPunti: 4000,       // il server dirada se ce ne sono di piu'
-  pollMs: 30000,        // valori attuali + allarmi
-  serieMs: 300000       // ricarica dei grafici (lo zoom in corso non si perde)
+(() => {
+'use strict';
+
+// Elimina qualsiasi service worker e cache residui dalla vecchia
+// pagina: se erano rimasti registrati, potevano servire una copia
+// vecchia di questo stesso file anche dopo un aggiornamento su
+// GitHub, spiegando dati che sul telefono restano fermi mentre
+// nRF Connect (che non passa dal browser) li vede cambiare.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(regs => {
+    regs.forEach(reg => reg.unregister());
+  });
+}
+if (window.caches) {
+  caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+}
+
+const SVC         = 'b1ee0001-0000-1000-8000-00805f9b34fb';
+const CHR_DATI    = 'b1ee0002-0000-1000-8000-00805f9b34fb';
+const CHR_COMANDO = 'b1ee0003-0000-1000-8000-00805f9b34fb';
+const CHR_CONFIG  = 'b1ee0004-0000-1000-8000-00805f9b34fb';
+
+const FLAG_MOVIMENTO  = 0x01;
+const FLAG_INCLINATA  = 0x02;
+const FLAG_BATT_BASSA = 0x04;
+const FLAG_NON_CALIB  = 0x08;
+const FLAG_CELLA_KO   = 0x10;
+const FLAG_SBALZO     = 0x20;   // nuovo: sbalzo di peso fra due cicli consecutivi
+
+const $ = (id) => document.getElementById(id);
+let device = null, server = null, chrDati = null, chrComando = null, chrConfig = null;
+
+function log(msg, tipo){
+  const el = $('log');
+  el.textContent = msg;
+  el.className = tipo || '';
+  if (tipo !== 'errore') {
+    clearTimeout(log._t);
+    log._t = setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
+  }
+}
+
+function stato(connesso, cercando){
+  const p = $('puntinoStato');
+  p.classList.toggle('ok', connesso);
+  p.classList.toggle('cerco', !!cercando);
+}
+
+function supportaBluetooth(){
+  if (!navigator.bluetooth) {
+    $('testoIniziale').textContent =
+      'Questo browser non supporta il Bluetooth via web. Su iPhone serve un browser tipo Bluefy; su Android va bene Chrome.';
+    $('btnConnetti').disabled = true;
+    return false;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------- lettura
+
+// DIAGNOSTICA TEMPORANEA: mostra i byte grezzi ricevuti, per vedere
+// con certezza se il dato che arriva cambia davvero o no. Da
+// togliere una volta chiarito il problema.
+function hexDump(dv){
+  let s = '';
+  for (let i = 0; i < dv.byteLength; i++){
+    const b = dv.getUint8(i);
+    s += (b < 16 ? '0' : '') + b.toString(16) + ' ';
+  }
+  return s.trim();
+}
+
+// Layout autoritativo: struct DatiLive in arnia_con_sonno_e_4_celle.ino
+// (caratteristica B1EE0002). Un punto solo da aggiornare se il layout
+// cambia ancora - non piu' offset sparsi nelle chiamate a getInt16/ecc.
+// Aggiornato il 21/8/26: 'totale' e' passato da int16 a int32 (era
+// l'overflow sopra 32,767 kg), il che sposta avanti di 2 byte tutti i
+// campi successivi. La PWA leggeva ancora il vecchio layout a 19 byte.
+//
+// Aggiornato il 21/8/26 (bis): la struct C e' davvero di 21 byte
+// (verificato leggendo il sorgente sul disco), ma sul campo la
+// notifica BLE e' arrivata a 20 byte - manca sempre e solo l'ultimo
+// campo, 'flag'. Causa quasi certa: l'MTU ATT di default e' 23 byte,
+// di cui 3 di intestazione del protocollo, quindi 20 byte utili per
+// pacchetto quando non c'e' stata una negoziazione MTU piu' larga fra
+// telefono/browser e modulo - il notify viene troncato in coda dallo
+// stack BLE stesso, la caratteristica resta dichiarata a 21 byte ma
+// quello che arriva e' il prefisso che ci sta nell'MTU. Non e' un
+// problema risolvibile lato PWA (Web Bluetooth non espone una
+// richiesta di MTU esplicita), quindi qui si accettano ENTRAMBE le
+// lunghezze: se arrivano 21 byte il flag si legge normalmente, se ne
+// arrivano 20 il flag e' considerato non disponibile invece di essere
+// letto a un offset che non esiste nel pacchetto ricevuto.
+const DATI_OFF = {
+  grammi:     0,   // int16 x4 (8 byte): 0,2,4,6
+  totale:     8,   // int32 (4 byte)
+  tempCenti: 12,   // int16
+  umidMezzi: 14,   // uint8
+  battPct:   15,   // uint8
+  voltMilli: 16,   // uint16
+  inclTotX10:18,   // int16
+  flag:      20,   // uint8 - spesso troncato dall'MTU BLE, vedi sopra
 };
+const DATI_LEN = 21;          // dimensione piena della struct C (con flag)
+const DATI_LEN_TRONCO = 20;   // dimensione osservata quando l'MTU tronca il flag
 
-const GIORNO_MS = 24 * 60 * 60 * 1000;
-
-/* Flag dell'arnia: come nel firmware del modulo. */
-const NOMI_ARNIA = [
-  [0x01, 'movimento'],
-  [0x02, 'inclinata'],
-  [0x04, 'batteria scarica'],
-  [0x20, 'sbalzo peso'],
-  [0x08, 'non calibrata'],
-  [0x10, 'cella KO']
-];
-
-/* Flag della stazione: allineati al firmware del concentratore.
-   I nomi sono discorsivi di proposito - qui non li legge chi sa cosa
-   sia un AHT20. I bit non riconosciuti compaiono comunque come
-   "flag bit N", cosi' un allarme nuovo non passa mai inosservato.
-   0x10 e 0x20 sono previsti ma non ancora generati dal firmware. */
-const NOMI_STAZIONE = [
-  [0x01, 'sensore temperatura/umidità non risponde'],
-  [0x02, 'sensore pressione non risponde'],
-  [0x04, 'sensore energia non risponde'],
-  [0x08, 'temperature discordanti'],
-  [0x10, 'batteria concentratore scarica'],
-  [0x20, 'nessuna ricarica dal pannello']
-];
-
-const COL = {
-  peso:  '#E8A93B',
-  temp:  '#F4C568',
-  umid:  '#8FA876',
-  pres:  '#7BA7C4',
-  corr:  '#C4562A',
-  corrFioca: 'rgba(196,86,42,.32)',   // corrente grezza: stessa tinta, tenue
-  tens:  '#C9B48C',
-  su:    '#E8A93B',
-  giu:   '#9A6B4F',
-  interv:'#7E9AA6',
-  griglia: 'rgba(74,50,32,.7)',
-  testo: '#C9B48C'
+// Layout autoritativo: struct ConfigLive nello stesso firmware
+// (caratteristica B1EE0004). Non toccata dal cambio di cui sopra,
+// ma tenuta con lo stesso schema per non ripetere il problema.
+const CONFIG_OFF = {
+  nodeId:       0,  // uint8
+  intervallo_s: 1,  // uint16
+  sogliaMov:    3,  // uint8
+  sogliaIncl:   4,  // uint8
+  nCelle:       5,  // uint8
+  calibrato:    6,  // uint8 (0/1)
+  assettoValido:7,  // uint8 (0/1)
 };
+const CONFIG_LEN = 8;
 
-/* ====================================================================
-   Utilita'
-   ==================================================================== */
-function fmt(v, dec){
-  if (v === null || v === undefined || !isFinite(v)) return '—';
-  return Number(v).toFixed(dec === undefined ? 1 : dec);
-}
-
-/* Le date del server sono UTC senza suffisso. Aggiungiamo la Z solo se
-   manca davvero, cosi' il giorno che il server passasse a un formato
-   con fuso esplicito la pagina non si rompe. */
-function msDa(iso){
-  if (!iso) return NaN;
-  return Date.parse(/([Zz]|[+-]\d\d:?\d\d)$/.test(iso) ? iso : iso + 'Z');
-}
-
-function tempoFa(iso){
-  const ms = msDa(iso);
-  if (!isFinite(ms)) return 'mai';
-  const min = Math.round((Date.now() - ms) / 60000);
-  if (min < 1) return 'adesso';
-  if (min < 60) return min + ' min fa';
-  const ore = Math.round(min / 60);
-  if (ore < 24) return ore + ' h fa';
-  return Math.round(ore / 24) + ' giorni fa';
-}
-
-function orario(iso){
-  const ms = msDa(iso);
-  if (!isFinite(ms)) return '—';
-  return new Date(ms).toLocaleString('it-IT', {
-    day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'
-  });
-}
-
-/* Come orario(), ma parte gia' da un numero di millisecondi invece che da
-   una stringa ISO: e' il formato che Chart.js tiene internamente sull'asse
-   tempo (vedi riempi()) - serve al pannello di lettura sotto i grafici. */
-function orarioBreve(ms){
-  if (!isFinite(ms)) return '—';
-  return new Date(ms).toLocaleString('it-IT', {
-    day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'
-  });
-}
-
-/* 'AAAA-MM-GG' locale, senza passare da UTC (toISOString sposterebbe
-   il giorno per chi guarda la pagina a mezzanotte passata). */
-function giornoLocale(data){
-  const d = data || new Date();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const gg = String(d.getDate()).padStart(2, '0');
-  return d.getFullYear() + '-' + mm + '-' + gg;
-}
-
-function giornoCorto(chiave){
-  const p = String(chiave).split('-');
-  return p.length === 3 ? p[2] + '/' + p[1] : chiave;
-}
-
-function nomiFlag(flag, tabella){
-  const nomi = [];
-  let residuo = flag || 0;
-  for (const [bit, nome] of tabella){
-    if (residuo & bit){ nomi.push(nome); residuo &= ~bit; }
+function leggiDati(dv){
+  if (dv.byteLength !== DATI_LEN && dv.byteLength !== DATI_LEN_TRONCO) {
+    log('Dati BLE: ricevuti ' + dv.byteLength + ' byte, ne attendevo ' +
+        DATI_LEN_TRONCO + ' o ' + DATI_LEN + ' - firmware e PWA non allineati?', 'errore');
+    return null;   // meglio non aggiornare la schermata che leggere offset a caso
   }
-  for (let i = 0; i < 32; i++){
-    if (residuo & (1 << i)) nomi.push('flag bit ' + i);
+  const o = DATI_OFF;
+  const grammi = [dv.getInt16(o.grammi,true), dv.getInt16(o.grammi+2,true),
+                  dv.getInt16(o.grammi+4,true), dv.getInt16(o.grammi+6,true)];
+  const totale = dv.getInt32(o.totale,true);
+  const temp   = dv.getInt16(o.tempCenti,true) / 100;
+  const umid   = dv.getUint8(o.umidMezzi) / 2;
+  const battPct= dv.getUint8(o.battPct);
+  const volt   = dv.getUint16(o.voltMilli,true) / 1000;
+  const inclTot= dv.getInt16(o.inclTotX10,true) / 10;
+  // il flag e' l'ultimo byte della struct: se il notify e' arrivato
+  // troncato a 20 byte (vedi nota sopra DATI_OFF) semplicemente non
+  // c'e' - non va inventato leggendo un offset fuori dal buffer.
+  const flagDisponibile = dv.byteLength >= DATI_LEN;
+  const flag = flagDisponibile ? dv.getUint8(o.flag) : 0;
+  return { grammi, totale, temp, umid, battPct, volt, inclTot, flag, flagDisponibile };
+}
+
+function leggiConfig(dv){
+  if (dv.byteLength !== CONFIG_LEN) {
+    log('Config BLE: ricevuti ' + dv.byteLength + ' byte, ne attendevo ' +
+        CONFIG_LEN + ' - firmware e PWA non allineati?', 'errore');
+    return null;   // meglio non aggiornare la schermata che leggere offset a caso
   }
-  return nomi;
-}
-
-/* Il testo dell'utente finisce dentro innerHTML: va neutralizzato,
-   altrimenti una nota con un < manda in pezzi la carta. */
-function testoSicuro(s){
-  return String(s === null || s === undefined ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-async function chiedi(url){
-  const r = await fetch(url, { cache:'no-store' });
-  if (!r.ok) throw new Error(url + ' → HTTP ' + r.status);
-  return r.json();
-}
-
-async function invia(metodo, url, corpo){
-  const opz = { method: metodo, cache:'no-store' };
-  if (corpo !== undefined){
-    opz.headers = { 'Content-Type': 'application/json' };
-    opz.body = JSON.stringify(corpo);
-  }
-  const r = await fetch(url, opz);
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  return r.json();
-}
-
-/* ====================================================================
-   Grafici
-   ==================================================================== */
-if (window.ChartZoom && !Chart.registry.plugins.get('zoom')){
-  Chart.register(window.ChartZoom);
-}
-
-/* Impedisce che pochi grammi di rumore riempiano tutta l'altezza del
-   grafico: sotto una certa ampiezza l'asse viene allargato d'ufficio. */
-function ampiezzaMinima(minimo){
-  return function(scala){
-    const larghezza = scala.max - scala.min;
-    if (larghezza < minimo){
-      const centro = (scala.max + scala.min) / 2;
-      scala.min = centro - minimo / 2;
-      scala.max = centro + minimo / 2;
-    }
-  };
-}
-
-/* Asse dedicato alla pressione: nascosto (display:false, non si vede
-   nessuna riga ne' numero), ma con gli estremi che si adattano da soli al
-   minimo/massimo dei dati VISUALIZZATI (Chart.js ricalcola scala.min/max
-   dentro afterDataLimits a ogni zoom/pan, non solo alla creazione: per
-   questo basta agganciarsi qui, senza codice apposta per lo zoom).
-   margineFrazione allarga oltre il dato vero (10-15%, qui il centro
-   12.5%); escursioneMinima e' un pavimento assoluto (circa 2 hPa) per
-   evitare che una giornata di pressione piattissima amplifichi il
-   rumore del sensore fino a farlo sembrare un'oscillazione vera. */
-function scalaPressione(margineFrazione, escursioneMinima){
-  return function(scala){
-    const min0 = scala.min, max0 = scala.max;
-    const centro = (max0 + min0) / 2;
-    let span = max0 - min0;
-    if (!(span > 0)) span = 0;   // pressione perfettamente costante nella finestra
-    const margine = span * margineFrazione;
-    let nuovoMin = min0 - margine;
-    let nuovoMax = max0 + margine;
-    if (nuovoMax - nuovoMin < escursioneMinima){
-      nuovoMin = centro - escursioneMinima / 2;
-      nuovoMax = centro + escursioneMinima / 2;
-    }
-    scala.min = nuovoMin;
-    scala.max = nuovoMax;
-  };
-}
-
-/* Media mobile CENTRATA sui punti gia' caricati (mai sul database: il
-   grezzo che arriva da riempi() resta quello). Ai bordi dell'array la
-   finestra si restringe invece di perdere i punti iniziali/finali. I
-   valori null (letture mancanti) sono ignorati nella somma, non trattati
-   come zero, cosi' un buco nei dati non abbassa artificialmente la media. */
-function mediaMobile(valori, finestra){
-  const meta = Math.floor(finestra / 2);
-  const uscita = new Array(valori.length);
-  for (let i = 0; i < valori.length; i++){
-    let somma = 0, conta = 0;
-    for (let j = Math.max(0, i - meta); j <= Math.min(valori.length - 1, i + meta); j++){
-      const v = valori[j];
-      if (v !== null && v !== undefined && isFinite(v)){ somma += v; conta++; }
-    }
-    uscita[i] = conta ? somma / conta : null;
-  }
-  return uscita;
-}
-
-/* Minimo e massimo di una serie, ignorando i buchi. Ritorna null/null se
-   non c'e' nessun valore valido (es. sensore mai partito). */
-function minMax(valori){
-  let min = null, max = null;
-  for (const v of valori){
-    if (v === null || v === undefined || !isFinite(v)) continue;
-    if (min === null || v < min) min = v;
-    if (max === null || v > max) max = v;
-  }
-  return { min: min, max: max };
-}
-
-/* Riempie una o piu' righe "minmax" con il minimo/massimo delle ultime
-   24h, presi con una chiamata separata e leggera allo stesso endpoint
-   della serie principale ma con giorni=1: in una finestra cosi' stretta
-   il server di norma non dirada (passo=1), quindi il min/max e' sul dato
-   pieno, non su quello gia' compresso alla finestra lunga. Usata sia
-   dalla Stazione sia da ogni arnia. voci: [{campo, elemento, dec, unita}].
-   Non blocca il resto della vista se fallisce. */
-async function popolaMinMax24h(url, voci){
-  try {
-    const serie = await chiedi(url);
-    voci.forEach(function(v){
-      if (!v.elemento) return;
-      const mm = minMax(serie[v.campo] || []);
-      v.elemento.textContent = mm.min === null ? '—' :
-        '24h: ' + fmt(mm.min, v.dec) + '–' + fmt(mm.max, v.dec) + ' ' + v.unita;
-    });
-  } catch (e){
-    console.error(e);
-  }
-}
-
-function assiTempo(){
+  const o = CONFIG_OFF;
   return {
-    type:'time',
-    time:{ tooltipFormat:'dd/MM/yyyy HH:mm' },
-    ticks:{ color:COL.testo, font:{size:10}, maxRotation:0, autoSkipPadding:20 },
-    grid:{ color:COL.griglia }
+    nodeId: dv.getUint8(o.nodeId),
+    intervallo_s: dv.getUint16(o.intervallo_s,true),
+    sogliaMov: dv.getUint8(o.sogliaMov),
+    sogliaIncl: dv.getUint8(o.sogliaIncl),
+    nCelle: dv.getUint8(o.nCelle),
+    calibrato: dv.getUint8(o.calibrato) === 1,
+    assettoValido: dv.getUint8(o.assettoValido) === 1,
   };
 }
 
-/* La finestra iniziale mostra solo gli ultimi giorni, ma i dati caricati
-   restano CFG.giorni: allargando lo zoom si vede tutto il resto senza
-   nessuna richiesta al server. */
-function finestraIniziale(grafico, giorni){
-  const ora = Date.now();
-  grafico.options.scales.x.min = ora - giorni * GIORNO_MS;
-  grafico.options.scales.x.max = ora;
-}
-
-/* "Azzera zoom" non torna alla finestra calcolata all'apertura della
-   pagina - che dopo qualche ora sarebbe vecchia - ma la ricalcola. */
-function azzera(grafico, giorni){
-  grafico.resetZoom();
-  finestraIniziale(grafico, giorni);
-  grafico.update('none');
-}
-
-function opzioni(scale, legenda){
-  return {
-    responsive:true,
-    maintainAspectRatio:false,
-    animation:false,
-    interaction:{ mode:'index', intersect:false },
-    plugins:{
-      legend:{ display: !!legenda, labels:{ color:COL.testo, boxWidth:10, font:{size:11} } },
-      tooltip:{
-        // Tooltip nativo disattivato: niente riquadro che segue il dito e
-        // copre il grafico. Il punto piu' vicino viene letto da qui
-        // (Chart.js risolve gia' correttamente ogni dataset per conto suo,
-        // anche quando le serie non sono allineate sugli stessi indici - la
-        // pressione nel grafico clima ne e' un esempio) e passato al pannello
-        // fisso sotto il grafico da aggiornaLettura() (vedi piu' sotto).
-        enabled:false,
-        external: aggiornaLettura
-      },
-      zoom:{
-        pan:{ enabled:true, mode:'x' },
-        zoom:{
-          wheel:{ enabled:true },
-          pinch:{ enabled:true },
-          mode:'x'
-        },
-        limits:{ x:{ minRange: 15 * 60 * 1000 } }   // non si scende sotto il quarto d'ora
-      }
-    },
-    scales: scale
-  };
-}
-
-function serieVuota(etichetta, colore, asse, decimali){
-  return {
-    label: etichetta,
-    data: [],
-    borderColor: colore,
-    backgroundColor: colore,
-    borderWidth: 2,
-    pointRadius: 0,
-    pointHitRadius: 8,
-    // stile del punto evidenziato sulla curva quando ci si passa sopra col
-    // dito/mouse - e' l'unico indicatore visivo sul grafico ora che il
-    // tooltip nativo e' disattivato (vedi opzioni())
-    pointHoverRadius: 5,
-    pointHoverBorderColor: '#F0DEB4',
-    pointHoverBorderWidth: 2,
-    tension: 0,
-    spanGaps: true,
-    yAxisID: asse || 'y',
-    // decimali da usare nel pannello di lettura sotto il grafico
-    // (aggiornaLettura()) - non incide sugli assi, solo sul testo del punto
-    decimali: (decimali === undefined ? 1 : decimali)
-  };
-}
-
-/* Una "voce" del pannello di lettura sotto un grafico: pallino del colore
-   della serie + etichetta + valore. */
-function rigaLettura(etichetta, colore, valore, decimali){
-  return '<span class="ln-voce">' +
-    '<span class="ln-pallino" style="background:' + colore + '"></span>' +
-    testoSicuro(etichetta) + ': ' + fmt(valore, decimali) +
-    '</span>';
-}
-
-/* Stato di riposo del pannello di lettura: quando non si sta toccando
-   nulla, mostra l'ultimo punto disponibile di ciascuna serie invece di
-   lasciare il pannello vuoto o farlo sparire (che sposterebbe il layout).
-   Soluzione scelta perche' e' la piu' semplice: ogni serie usa il proprio
-   ultimo punto valido, quindi funziona anche quando le serie non sono
-   allineate sugli stessi tempi (es. la pressione nel grafico clima, che
-   arriva da una serie con i suoi orari propri). */
-function mostraUltimoPunto(grafico, elemento){
-  if (!elemento) return;
-  let quandoMs = NaN;
-  const righe = [];
-  grafico.data.datasets.forEach(function(ds){
-    const dati = ds.data;
-    let ultimo = null;
-    for (let i = dati.length - 1; i >= 0; i--){
-      if (dati[i] && dati[i].y !== null && dati[i].y !== undefined){ ultimo = dati[i]; break; }
-    }
-    if (!ultimo) return;
-    if (!isFinite(quandoMs) || ultimo.x > quandoMs) quandoMs = ultimo.x;
-    righe.push(rigaLettura(ds.label, ds.borderColor, ultimo.y, ds.decimali));
-  });
-  if (!righe.length){
-    elemento.innerHTML = '<span class="ln-vuoto">nessun dato</span>';
-    return;
+function mostraDati(d){
+  $('pesoTotale').textContent = (d.totale/1000).toFixed(3);
+  for (let i=0;i<4;i++){
+    const el = $('cella'+i);
+    el.textContent = (d.grammi[i]/1000).toFixed(3)+' kg';
   }
-  elemento.innerHTML = '<span class="ln-quando">' + testoSicuro(orarioBreve(quandoMs)) +
-                        '</span>' + righe.join('');
-}
+  $('gTemp').innerHTML = d.temp.toFixed(1)+'<span class="unita"> °C</span>';
+  $('gUmid').innerHTML = d.umid.toFixed(0)+'<span class="unita"> %</span>';
+  $('gBatt').innerHTML = d.battPct+'<span class="unita"> % · '+d.volt.toFixed(2)+' V</span>';
+  $('gIncl').innerHTML = d.inclTot.toFixed(1)+'<span class="unita">°</span>';
 
-/* Punto piu' vicino a un tempo dato dentro un array {x,y} ordinato per x
-   crescente (cosi' lo costruisce riempi()). Ricerca binaria invece di
-   scandire tutto l'array: sui grafici piu' carichi (CFG.maxPunti) questa
-   funzione gira a ogni passaggio del dito/mouse. */
-function puntoPiuVicino(dati, ms){
-  if (!dati || !dati.length || !isFinite(ms)) return null;
-  let lo = 0, hi = dati.length - 1;
-  if (ms <= dati[lo].x) return dati[lo];
-  if (ms >= dati[hi].x) return dati[hi];
-  while (hi - lo > 1){
-    const mid = (lo + hi) >> 1;
-    if (dati[mid].x <= ms) lo = mid; else hi = mid;
-  }
-  return (ms - dati[lo].x <= dati[hi].x - ms) ? dati[lo] : dati[hi];
-}
-
-/* Handler esterno del tooltip di Chart.js (agganciato in opzioni() al
-   posto del riquadro nativo, disattivato). Non ci si fida degli indici che
-   Chart.js abbina da solo (tooltip.dataPoints): con dataset di lunghezza
-   diversa - qui la pressione, che arriva da una serie con i suoi tempi
-   propri - l'abbinamento per indice di Chart.js puo' saltare la serie o
-   restituire il punto sbagliato. Si riconverte quindi in un tempo vero
-   (getValueForPixel sul punto toccato) e si cerca il punto piu' vicino IN
-   OGNI serie per conto suo (puntoPiuVicino sopra): cosi' e' sempre
-   corretto, indipendentemente da quanti punti abbia ciascuna serie. Il
-   pannello aggiornato e' trovato risalendo dal canvas al suo .grafico-box,
-   cosi' funziona identico per tutti e tre i grafici senza bisogno di sapere
-   qui quale sia. Quando non si sta toccando nulla (tooltip.opacity a 0,
-   anche al rilascio del dito su mobile) torna a mostrare l'ultimo punto
-   invece di svuotare il pannello. */
-function aggiornaLettura(context){
-  const box = context.chart.canvas.closest('.grafico-box');
-  const elemento = box && box.querySelector('.lettura-grafico');
-  if (!elemento) return;
-  const tooltip = context.tooltip;
-  if (!tooltip || tooltip.opacity === 0 || !tooltip.dataPoints || !tooltip.dataPoints.length){
-    mostraUltimoPunto(context.chart, elemento);
-    return;
-  }
-  const chart = context.chart;
-  const puntoMs = chart.scales.x.getValueForPixel(tooltip.caretX);
-  let quandoMs = NaN, distanzaMin = Infinity;
-  const righe = [];
-  chart.data.datasets.forEach(function(ds){
-    const p = puntoPiuVicino(ds.data, puntoMs);
-    if (!p) return;
-    const distanza = Math.abs(p.x - puntoMs);
-    if (distanza < distanzaMin){ distanzaMin = distanza; quandoMs = p.x; }
-    righe.push(rigaLettura(ds.label, ds.borderColor, p.y, ds.decimali));
-  });
-  if (!righe.length){ mostraUltimoPunto(chart, elemento); return; }
-  elemento.innerHTML = '<span class="ln-quando">' + testoSicuro(orarioBreve(quandoMs)) +
-                        '</span>' + righe.join('');
-}
-
-function creaGraficoPeso(tela){
-  const g = new Chart(tela.getContext('2d'), {
-    type:'line',
-    data:{ datasets:[ serieVuota('peso (kg)', COL.peso, undefined, 2) ] },
-    options: opzioni({
-      x: assiTempo(),
-      y: {
-        ticks:{ color:COL.testo, font:{size:10} },
-        grid:{ color:COL.griglia },
-        afterDataLimits: ampiezzaMinima(0.5)     // almeno mezzo chilo di fondo scala
-      }
-    }, false)
-  });
-  finestraIniziale(g, CFG.vistaGiorni);
-  return g;
-}
-
-function creaGraficoClima(tela, giorniVista){
-  const g = new Chart(tela.getContext('2d'), {
-    type:'line',
-    data:{ datasets:[
-      serieVuota('temperatura °C', COL.temp, 'y', 1),
-      serieVuota('umidità %', COL.umid, 'y1', 0),
-      Object.assign(
-        serieVuota('pressione hPa', COL.pres, 'y2', 0),
-        { borderWidth:1.5, borderDash:[4,3] }   // tratteggiata: si distingue anche se incrocia le altre due
-      )
-    ]},
-    options: opzioni({
-      x: assiTempo(),
-      y: {
-        position:'left',
-        ticks:{ color:COL.temp, font:{size:10} },
-        grid:{ color:COL.griglia },
-        afterDataLimits: ampiezzaMinima(4)       // almeno 4 gradi di fondo scala
-      },
-      y1: {
-        position:'right',
-        min:0, max:100,
-        ticks:{ color:COL.umid, font:{size:10} },
-        grid:{ display:false }
-      },
-      // asse dedicato alla pressione, volutamente nascosto: il valore
-      // esatto e' gia' nel riquadro sopra (o nel tooltip), qui serve solo
-      // l'andamento. Margine 12.5% (dentro il 10-15% richiesto) ed
-      // escursione minima di 2 hPa, ricalcolati a ogni zoom perche'
-      // afterDataLimits gira a ogni ricalcolo di scala, zoom incluso.
-      y2: {
-        display:false,
-        afterDataLimits: scalaPressione(0.125, 2)
-      }
-    }, true)
-  });
-  finestraIniziale(g, giorniVista || CFG.vistaGiorni);
-  return g;
-}
-
-const FINESTRA_MEDIA_CORRENTE = 5;   // vedi nota in aggiornaStazione()
-
-function creaGraficoEnergia(tela){
-  // Tensione in volt con due decimali (non piu' millivolt): il dato resta
-  // in mV nel database, si converte solo qui alla visualizzazione tramite
-  // lo `scala` di riempi() (0.001) al momento del riempimento.
-  const opz = opzioni({
-    x: assiTempo(),
-    y: {
-      position:'left',
-      ticks:{ color:COL.corr, font:{size:10} },
-      grid:{ color:COL.griglia },
-      afterDataLimits: ampiezzaMinima(10)
-    },
-    y1: {
-      position:'right',
-      ticks:{ color:COL.tens, font:{size:10}, callback: function(v){ return Number(v).toFixed(2); } },
-      grid:{ display:false }
-    }
-  }, true);
-  // La formattazione con i decimali giusti per serie ora passa dal campo
-  // `decimali` di ciascun dataset (vedi serieVuota()) letto direttamente da
-  // aggiornaLettura() - non serve piu' un callback tooltip dedicato qui.
-
-  const g = new Chart(tela.getContext('2d'), {
-    type:'line',
-    data:{ datasets:[
-      Object.assign(
-        serieVuota('corrente mA (grezza)', COL.corrFioca, 'y', 1),
-        { borderWidth:1 }   // sottile e tenue: resta visibile ma non domina
-      ),
-      Object.assign(
-        serieVuota('corrente media mA', COL.corr, 'y', 1),
-        { borderWidth:3, tension:0.15 }   // spessa e piena, disegnata sopra la grezza
-      ),
-      serieVuota('tensione V', COL.tens, 'y1', 2)
-    ]},
-    options: opz
-  });
-  finestraIniziale(g, CFG.vistaGiornStaz || CFG.vistaGiorniStaz);
-  return g;
-}
-
-/* Istogramma del delta giornaliero. Asse a categorie e non temporale:
-   le barre sono una per giorno e devono restare larghe uguali, e i
-   giorni senza misura devono lasciare uno spazio vuoto invece di
-   sparire stringendo il grafico. Niente zoom qui: trenta barre si
-   leggono tutte insieme. */
-function creaGraficoDelta(tela){
-  return new Chart(tela.getContext('2d'), {
-    type:'bar',
-    data:{ labels:[], datasets:[{
-      label:'delta (kg)',
-      data:[],
-      backgroundColor:[],
-      borderColor:[],
-      borderWidth:1
-    }]},
-    options:{
-      responsive:true,
-      maintainAspectRatio:false,
-      animation:false,
-      plugins:{
-        legend:{ display:false },
-        tooltip:{
-          backgroundColor:'#2B1B0E',
-          borderColor:'#4A3220', borderWidth:1,
-          titleColor:'#F0DEB4', bodyColor:'#F0DEB4',
-          callbacks:{
-            label: function(ctx){
-              const v = ctx.parsed.y;
-              const extra = ctx.dataset.note ? ctx.dataset.note[ctx.dataIndex] : null;
-              if (v === null || v === undefined) return 'nessuna misura';
-              const base = (v > 0 ? '+' : '') + v.toFixed(3) + ' kg';
-              return extra ? [base, 'intervento: ' + extra] : base;
-            }
-          }
-        }
-      },
-      scales:{
-        x:{
-          ticks:{ color:COL.testo, font:{size:9}, maxRotation:0, autoSkip:true, autoSkipPadding:8 },
-          grid:{ display:false }
-        },
-        y:{
-          ticks:{ color:COL.testo, font:{size:10} },
-          grid:{ color:COL.griglia },
-          afterDataLimits: ampiezzaMinima(0.4)
-        }
-      }
-    }
-  });
-}
-
-function riempi(grafico, indice, tempi, valori, scala){
-  grafico.data.datasets[indice].data = tempi.map(function(x, i){
-    const v = valori ? valori[i] : null;
-    return { x: x, y: (v === null || v === undefined) ? null : (scala ? v * scala : v) };
-  });
-}
-
-function notaSerie(s){
-  let testo = s.punti + ' punti su ' + s.totali + ' letture · ' + CFG.giorni + ' giorni caricati';
-  if (s.passo > 1) testo += ' · 1 punto ogni ' + s.passo;
-  return testo;
-}
-
-/* ====================================================================
-   Sezioni delle arnie (una per nodo, generate al volo)
-   ==================================================================== */
-const carte = new Map();   // node_id → { el, r, gPeso, gClima, gDelta, ultimoTs }
-
-function riferimenti(el){
-  const m = {};
-  el.querySelectorAll('[data-r]').forEach(function(n){ m[n.dataset.r] = n; });
-  return m;
-}
-
-function creaSezioneArnia(nodeId){
-  const sezione = document.createElement('section');
-  sezione.className = 'vista-arnia';
-  sezione.id = 'vista-arnia-' + nodeId;
-  sezione.hidden = true;
-
-  const el = document.createElement('div');
-  el.className = 'arnia';
-  el.innerHTML =
-    '<div class="arnia-testata">' +
-      '<div><h2>arnia' + String(nodeId).padStart(2,'0') + '</h2>' +
-      '<div class="quando" data-r="quando">—</div></div>' +
-    '</div>' +
-
-    '<div class="allarmi-correnti" data-r="allarmi-correnti"></div>' +
-
-    '<div class="peso-tot num" data-r="peso">—<span class="unita">kg</span></div>' +
-    '<div class="piedini num">' +
-      '<div class="piede">1 <b data-r="c1">—</b></div>' +
-      '<div class="piede">2 <b data-r="c2">—</b></div>' +
-      '<div class="piede">3 <b data-r="c3">—</b></div>' +
-      '<div class="piede">4 <b data-r="c4">—</b></div>' +
-    '</div>' +
-
-    '<div class="griglia">' +
-      '<div class="gauge"><div class="etichetta">Temp.</div><div class="valore num" data-r="temp">—</div><div class="minmax" data-r="temp-minmax">—</div></div>' +
-      '<div class="gauge"><div class="etichetta">Umidità</div><div class="valore num" data-r="umid">—</div><div class="minmax" data-r="umid-minmax">—</div></div>' +
-      '<div class="gauge"><div class="etichetta">Batteria</div><div class="valore num" data-r="batt">—</div></div>' +
-      '<div class="gauge"><div class="etichetta">Inclinaz.</div><div class="valore num" data-r="incl">—</div></div>' +
-    '</div>' +
-
-    '<details class="eventi">' +
-      '<summary data-r="riepilogo">Storico allarmi</summary>' +
-      '<div data-r="lista"></div>' +
-    '</details>' +
-
-    '<div class="tecnico" data-r="tecnico">—</div>' +
-
-    '<div class="accumulo">' +
-      '<div>' +
-        '<div class="etichetta">Accumulo di stagione</div>' +
-        '<div class="dal" data-r="acc-dal">—</div>' +
-      '</div>' +
-      '<div class="valore num" data-r="acc-valore">—<span class="unita"> kg</span></div>' +
-    '</div>' +
-
-    '<div class="grafico-box">' +
-      '<div class="grafico-testata">' +
-        '<span class="grafico-etichetta">Delta giornaliero (21:30)</span>' +
-      '</div>' +
-      '<div class="tela"><canvas data-r="tela-delta"></canvas></div>' +
-      '<div class="nota-grafico" data-r="nota-delta">—</div>' +
-    '</div>' +
-
-    '<details class="eventi">' +
-      '<summary>Interventi (melari, smielature)</summary>' +
-      '<div class="aiuto-modulo">' +
-        'Marca i giorni in cui hai messo o tolto qualcosa: quel salto di peso ' +
-        'non lo hanno fatto le api. I chili sono <b>positivi se hai tolto</b> ' +
-        '(melario smielato), negativi se hai aggiunto. Senza quel numero il ' +
-        'giorno viene solo escluso dall\'accumulo, e la produzione portata via ' +
-        'non viene contata.' +
-      '</div>' +
-      '<div class="modulo">' +
-        '<input type="date" data-r="int-giorno">' +
-        '<input type="number" step="0.1" class="kg" placeholder="kg" data-r="int-kg">' +
-        '<input type="text" placeholder="nota (facoltativa)" data-r="int-nota">' +
-        '<button class="bottone principale" type="button" data-r="int-salva">Salva</button>' +
-      '</div>' +
-      '<div class="esito" data-r="int-esito" hidden></div>' +
-      '<div data-r="int-elenco"></div>' +
-    '</details>' +
-
-    '<div class="grafico-box">' +
-      '<div class="grafico-testata">' +
-        '<span class="grafico-etichetta">Peso</span>' +
-        '<button class="bottone" type="button" data-r="reset-peso">Azzera zoom</button>' +
-      '</div>' +
-      '<div class="tela"><canvas data-r="tela-peso"></canvas></div>' +
-      '<div class="lettura-grafico" data-r="lettura-peso"></div>' +
-    '</div>' +
-
-    '<div class="grafico-box">' +
-      '<div class="grafico-testata">' +
-        '<span class="grafico-etichetta">Temperatura e umidità</span>' +
-        '<button class="bottone" type="button" data-r="reset-clima">Azzera zoom</button>' +
-      '</div>' +
-      '<div class="tela"><canvas data-r="tela-clima"></canvas></div>' +
-      '<div class="lettura-grafico" data-r="lettura-clima"></div>' +
-      '<div class="nota-grafico" data-r="nota">—</div>' +
-    '</div>';
-
-  sezione.appendChild(el);
-  document.getElementById('vista-arnie-contenitore').appendChild(sezione);
-
-  const r = riferimenti(el);
-  const carta = {
-    el: el, sezione: sezione, r: r, nodeId: nodeId,
-    gPeso: creaGraficoPeso(r['tela-peso']),
-    gClima: creaGraficoClima(r['tela-clima'], CFG.vistaGiorni),
-    gDelta: creaGraficoDelta(r['tela-delta']),
-    ultimoTs: null
-  };
-  r['reset-peso'].addEventListener('click', function(){ azzera(carta.gPeso, CFG.vistaGiorni); });
-  r['reset-clima'].addEventListener('click', function(){ azzera(carta.gClima, CFG.vistaGiorni); });
-
-  r['int-giorno'].value = giornoLocale();
-  r['int-salva'].addEventListener('click', function(){ salvaIntervento(nodeId); });
-
-  carte.set(nodeId, carta);
-  return carta;
-}
-
-function aggiornaValori(carta, d){
-  const r = carta.r;
-  r['quando'].textContent = 'ricevuto ' + tempoFa(d.ricevuto_il);
-  r['peso'].innerHTML = fmt(d.totale === null ? null : d.totale / 1000, 3) +
-                        '<span class="unita">kg</span>';
-  r['c1'].textContent = fmt(d.cella1 === null ? null : d.cella1 / 1000, 3);
-  r['c2'].textContent = fmt(d.cella2 === null ? null : d.cella2 / 1000, 3);
-  r['c3'].textContent = fmt(d.cella3 === null ? null : d.cella3 / 1000, 3);
-  r['c4'].textContent = fmt(d.cella4 === null ? null : d.cella4 / 1000, 3);
-  r['temp'].innerHTML = fmt(d.temperatura, 1) + '<span class="unita"> °C</span>';
-  r['umid'].innerHTML = fmt(d.umidita, 0) + '<span class="unita"> %</span>';
-  r['batt'].innerHTML = fmt(d.batteria_pct, 0) + '<span class="unita"> %</span>';
-  r['incl'].innerHTML = fmt(d.incl_x, 1) + '/' + fmt(d.incl_y, 1) + '<span class="unita">°</span>';
-  r['tecnico'].textContent =
-    'seq LoRa ' + (d.seq_lora === null ? '—' : d.seq_lora) +
-    ' · seq BLE ' + (d.seq_ble === null ? '—' : d.seq_ble) +
-    ' · RSSI ' + fmt(d.rssi, 0) + ' dBm' +
-    ' · SNR ' + fmt(d.snr, 1) + ' dB' +
-    ' · batteria ' + (d.batteria_mv === null ? '—' : (d.batteria_mv / 1000).toFixed(2)) + ' V';
-}
-
-/* Episodio "storico" o "evento": stesso shape di prima ({flag,da,a,
-   letture}), il resto delle colonne nuove non serve qui. */
-function htmlEventi(eventi, tabella){
-  if (!eventi || !eventi.length){
-    return '<div class="nessun-evento">Nessun allarme negli ultimi ' + CFG.giorni + ' giorni.</div>';
-  }
-  return eventi.map(function(e){
-    return '<div class="evento">' +
-      '<div class="evento-quando num">' + orario(e.da) + ' → ' + orario(e.a) + '</div>' +
-      '<div class="evento-cosa">' + testoSicuro(nomiFlag(e.flag, tabella).join(', ')) +
-        ' <span class="evento-letture num">(' + e.letture + ' letture)</span></div>' +
-    '</div>';
-  }).join('');
-}
-
-function aggiornaStoricoAllarmi(carta, a, tabella){
-  carta.r['lista'].innerHTML = htmlEventi(a.storico, tabella);
-  carta.r['riepilogo'].textContent = 'Storico allarmi (' + a.storico.length + ')';
-}
-
-/* ====================================================================
-   Allarmi "in evidenza" / "riga discreta" - stessa logica ovunque
-   (stazione e ogni arnia)
-   ==================================================================== */
-function htmlAllarmeCorrente(ev, tabella){
-  const nomi = testoSicuro(nomiFlag(ev.flag, tabella).join(', '));
-  if (ev.visto_il === null){
-    const rientrato = ev.attivo === 0;
-    return '<div class="allarme-evidenza">' +
-      '<div class="allarme-evidenza-testo">' +
-        '<span class="allarme-evidenza-tipo">' + nomi + '</span>' +
-        '<span class="allarme-evidenza-quando">dalle ' + orario(ev.da) +
-          (rientrato ? ' · rientrato alle ' + orario(ev.a) : '') + '</span>' +
-      '</div>' +
-      '<button class="bottone principale mini" type="button" data-visto="' + ev.id + '">Visto</button>' +
-    '</div>';
-  }
-  return '<div class="allarme-discreto">' +
-    nomi + ' · dalle ' + orario(ev.da) + ' · silenziato alle ' + orario(ev.visto_il) +
-  '</div>';
-}
-
-function renderAllarmiCorrenti(container, correnti, tabella){
-  if (!correnti || !correnti.length){ container.innerHTML = ''; return; }
-  container.innerHTML = correnti.map(function(ev){ return htmlAllarmeCorrente(ev, tabella); }).join('');
-  container.querySelectorAll('button[data-visto]').forEach(function(b){
-    b.addEventListener('click', function(){ segnaVisto(b.dataset.visto); });
-  });
-}
-
-/* Dopo un "visto" ricarico solo la vista che l'utente sta guardando in
-   quel momento: non serve rincorrere ogni altra scheda aperta altrove. */
-async function segnaVisto(id){
-  try {
-    await invia('POST', '/api/allarmi/' + id + '/visto');
-  } catch (e){
-    console.error(e);
-    return;
-  }
-  const attuale = vistaAttuale();
-  if (attuale.tipo === 'stazione') aggiornaStazione();
-  else if (attuale.tipo === 'arnia') aggiornaUnaArnia(attuale.nodeId);
-  else if (attuale.tipo === 'allarmi') caricaAllarmiTab();
-}
-
-/* La pressione la misura solo la stazione: la sua serie si carica UNA
-   volta sola (non una volta per arnia, sarebbe ridondante - stesso dato
-   per tutti) e si condivide da qui. Alimentata sia dal giro periodico
-   in background sia, se serve, da chi la trova vuota. */
-let serieStazioneCache = null;
-
-async function caricaSerieStazioneCondivisa(){
-  try {
-    serieStazioneCache = await chiedi('/api/concentratore/serie?giorni=' +
-      CFG.giorni + '&max_punti=' + CFG.maxPunti);
-  } catch (e){
-    console.error(e);
-  }
-  return serieStazioneCache;
-}
-
-async function caricaSerie(nodeId){
-  const carta = carte.get(nodeId);
-  if (!carta) return;
-  const s = await chiedi('/api/dati/serie?node_id=' + nodeId +
-                         '&giorni=' + CFG.giorni + '&max_punti=' + CFG.maxPunti);
-  const t = s.t.map(msDa);
-  riempi(carta.gPeso, 0, t, s.totale, 0.001);
-  riempi(carta.gClima, 0, t, s.temperatura);
-  riempi(carta.gClima, 1, t, s.umidita);
-
-  const serieStaz = serieStazioneCache || await caricaSerieStazioneCondivisa();
-  if (serieStaz && serieStaz.punti){
-    riempi(carta.gClima, 2, serieStaz.t.map(msDa), serieStaz.pressione);
-  }
-
-  // 'none': ridisegna senza toccare lo zoom che l'utente ha impostato
-  carta.gPeso.update('none');
-  carta.gClima.update('none');
-  carta.r['nota'].textContent = notaSerie(s);
-
-  // pannelli di lettura: senza questo restano vuoti finche' non si tocca
-  // il grafico almeno una volta
-  mostraUltimoPunto(carta.gPeso, carta.r['lettura-peso']);
-  mostraUltimoPunto(carta.gClima, carta.r['lettura-clima']);
-}
-
-/* ====================================================================
-   Delta giornaliero e interventi
-   ==================================================================== */
-async function caricaDelta(nodeId){
-  const carta = carte.get(nodeId);
-  if (!carta) return;
-
-  const d = await chiedi('/api/dati/delta?node_id=' + nodeId +
-                         '&giorni=' + CFG.giorniDelta);
-
-  // il server manda solo i giorni che hanno un valore: qui si ricostruisce
-  // l'asse completo, cosi' un giorno senza misura resta un vuoto visibile
-  // invece di sparire e far sembrare la serie continua
-  const perGiorno = new Map();
-  d.giorni.forEach(function(g){ perGiorno.set(g.giorno, g); });
-
-  const etichette = [], valori = [], sfondi = [], bordi = [], note = [];
-  const oggi = new Date();
-  for (let i = CFG.giorniDelta - 1; i >= 0; i--){
-    const data = new Date(oggi.getTime() - i * GIORNO_MS);
-    const chiave = giornoLocale(data);
-    const g = perGiorno.get(chiave);
-
-    etichette.push(giornoCorto(chiave));
-    if (!g || g.delta_g === null || g.delta_g === undefined){
-      valori.push(null); sfondi.push('transparent'); bordi.push('transparent'); note.push(null);
-      continue;
-    }
-    const kg = g.delta_g / 1000;
-    valori.push(kg);
-    if (g.intervento){
-      // il valore resta quello vero, cambia solo il colore: il grafico
-      // non mente, ma si vede che quel giorno c'e' di mezzo una mano
-      sfondi.push('rgba(126,154,166,.35)');
-      bordi.push(COL.interv);
-      const kgi = g.intervento.kg;
-      note.push((kgi === null || kgi === undefined ? '' : kgi + ' kg · ') +
-                (g.intervento.nota || 'segnato'));
-    } else {
-      sfondi.push(kg >= 0 ? COL.su : COL.giu);
-      bordi.push(kg >= 0 ? COL.su : COL.giu);
-      note.push(null);
-    }
-  }
-
-  const ds = carta.gDelta.data.datasets[0];
-  carta.gDelta.data.labels = etichette;
-  ds.data = valori;
-  ds.backgroundColor = sfondi;
-  ds.borderColor = bordi;
-  ds.note = note;
-  carta.gDelta.update('none');
-
-  const misurati = valori.filter(function(v){ return v !== null; }).length;
-  carta.r['nota-delta'].textContent =
-    misurati + ' giorni misurati su ' + CFG.giorniDelta +
-    ' · riferimento ore ' + d.ora_riferimento + ' ±' + d.finestra_min + ' min';
-
-  if (d.accumulo_g === null || d.accumulo_g === undefined){
-    carta.r['acc-valore'].innerHTML = '—<span class="unita"> kg</span>';
+  const badge = [];
+  if (!d.flagDisponibile) {
+    // notify BLE arrivato troncato a 20 byte (MTU): il flag non c'e'
+    // in questo pacchetto, meglio dirlo che mostrare "tutto ok" a caso
+    badge.push('Stato non disponibile (BLE troncato)');
   } else {
-    const kg = d.accumulo_g / 1000;
-    carta.r['acc-valore'].innerHTML = (kg > 0 ? '+' : '') + kg.toFixed(2) +
-                                      '<span class="unita"> kg</span>';
+    if (d.flag & FLAG_MOVIMENTO)  badge.push('Movimento rilevato');
+    if (d.flag & FLAG_INCLINATA)  badge.push('Inclinazione fuori soglia');
+    if (d.flag & FLAG_BATT_BASSA) badge.push('Batteria scarica');
+    if (d.flag & FLAG_NON_CALIB)  badge.push('Non calibrata');
+    if (d.flag & FLAG_CELLA_KO)   badge.push('Una cella non risponde');
+    if (d.flag & FLAG_SBALZO)     badge.push('Sbalzo di peso');
   }
-  carta.r['acc-dal'].textContent = 'dal ' + giornoCorto(d.accumulo_dal) +
-                                   ' · peso, non solo miele';
-
-  await caricaInterventi(nodeId);
+  $('rigaBadge').innerHTML = badge.map(t => `<div class="badge">${t}</div>`).join('');
 }
 
-async function caricaInterventi(nodeId){
-  const carta = carte.get(nodeId);
-  if (!carta) return;
-  let elenco;
+function mostraConfig(c){
+  $('cfgNodeId').value = c.nodeId;
+  $('cfgIntervallo').value = c.intervallo_s;
+  $('cfgSogliaIncl').value = c.sogliaIncl;
+  $('cfgSogliaMov').value = c.sogliaMov;
+  $('cfgNCelle').textContent = c.nCelle;
+  $('cfgCalibrato').textContent = c.calibrato ? 'sì' : 'no';
+  $('cfgAssetto').textContent = c.assettoValido ? 'impostato' : 'da fare';
+}
+
+// ---------------------------------------------------------- comandi
+
+async function invia(bytes){
+  if (!chrComando) return;
   try {
-    elenco = await chiedi('/api/interventi?node_id=' + nodeId);
-  } catch (e){
-    console.error(e);
-    return;
+    await chrComando.writeValue(bytes);
+  } catch(e) {
+    log('Comando non riuscito: ' + e.message, 'errore');
   }
+}
 
-  if (!elenco.length){
-    carta.r['int-elenco'].innerHTML =
-      '<div class="nessun-evento">Nessun intervento segnato.</div>';
-    return;
-  }
+function cmdTara(){ return new Uint8Array([0x74]); }
+function cmdAssetto(){ return new Uint8Array([0x61]); }
+function cmdCalibra(kg){
+  const buf = new ArrayBuffer(5);
+  const dv = new DataView(buf);
+  dv.setUint8(0, 0x63);
+  dv.setFloat32(1, kg, true);
+  return new Uint8Array(buf);
+}
+function cmdNodeId(id){ return new Uint8Array([0x6E, id & 0xFF]); }
+function cmdIntervallo(sec){
+  const buf = new ArrayBuffer(3);
+  const dv = new DataView(buf);
+  dv.setUint8(0, 0x69);
+  dv.setUint16(1, sec, true);
+  return new Uint8Array(buf);
+}
+function cmdSogliaIncl(v){ return new Uint8Array([0x67, v & 0xFF]); }
+function cmdSogliaMov(v){ return new Uint8Array([0x6D, v & 0xFF]); }
 
-  carta.r['int-elenco'].innerHTML = elenco.map(function(i){
-    const kg = (i.kg === null || i.kg === undefined)
-      ? '—' : ((i.kg > 0 ? '+' : '') + i.kg + ' kg');
-    return '<div class="riga-intervento">' +
-             '<span class="g">' + testoSicuro(i.giorno) + '</span>' +
-             '<span class="num">' + testoSicuro(kg) + '</span>' +
-             '<span class="n">' + testoSicuro(i.nota || '') + '</span>' +
-             '<button class="bottone mini" type="button" data-giorno="' +
-               testoSicuro(i.giorno) + '">Togli</button>' +
-           '</div>';
-  }).join('');
+// --- nuovi: taratura per cella e soglia sbalzo ---
+function cmdZeroCella(n){ return new Uint8Array([0x7A, n]); }   // 'z' + numero cella (1-4)
+function cmdCalibraCella(n, kg){
+  const buf = new ArrayBuffer(6);
+  const dv = new DataView(buf);
+  dv.setUint8(0, 0x6B);        // 'k'
+  dv.setUint8(1, n);
+  dv.setFloat32(2, kg, true);
+  return new Uint8Array(buf);
+}
+function cmdSogliaSbalzo(g){
+  const buf = new ArrayBuffer(3);
+  const dv = new DataView(buf);
+  dv.setUint8(0, 0x70);        // 'p'
+  dv.setUint16(1, g, true);
+  return new Uint8Array(buf);
+}
 
-  carta.r['int-elenco'].querySelectorAll('button[data-giorno]').forEach(function(b){
-    b.addEventListener('click', function(){
-      cancellaIntervento(nodeId, b.dataset.giorno);
+// --- nuovi: soglie sottotensione / allarme batteria ---
+function cmdSogliaTaglio(mv){
+  const buf = new ArrayBuffer(3);
+  const dv = new DataView(buf);
+  dv.setUint8(0, 0x75);        // 'u'
+  dv.setUint16(1, mv, true);
+  return new Uint8Array(buf);
+}
+function cmdSogliaRientro(mv){
+  const buf = new ArrayBuffer(3);
+  const dv = new DataView(buf);
+  dv.setUint8(0, 0x79);        // 'y'
+  dv.setUint16(1, mv, true);
+  return new Uint8Array(buf);
+}
+function cmdSogliaAllarmeBatt(mv){
+  const buf = new ArrayBuffer(3);
+  const dv = new DataView(buf);
+  dv.setUint8(0, 0x62);        // 'b'
+  dv.setUint16(1, mv, true);
+  return new Uint8Array(buf);
+}
+
+// ---------------------------------------------------------- connessione
+
+async function connetti(){
+  try {
+    log('Cerco il modulo…');
+    stato(false, true);
+
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [SVC]
     });
-  });
-}
+    $('nomeDispositivo').textContent = device.name || '';
+    device.addEventListener('gattserverdisconnected', alDisconnesso);
 
-function mostraEsito(carta, testo, male){
-  const e = carta.r['int-esito'];
-  e.hidden = false;
-  e.textContent = testo;
-  e.className = male ? 'esito male' : 'esito';
-}
+    server = await device.gatt.connect();
+    const svc = await server.getPrimaryService(SVC);
+    chrDati    = await svc.getCharacteristic(CHR_DATI);
+    chrComando = await svc.getCharacteristic(CHR_COMANDO);
+    chrConfig  = await svc.getCharacteristic(CHR_CONFIG);
 
-async function salvaIntervento(nodeId){
-  const carta = carte.get(nodeId);
-  if (!carta) return;
-  const giorno = carta.r['int-giorno'].value;
-  const kgTesto = carta.r['int-kg'].value;
-  const nota = carta.r['int-nota'].value;
+    chrDati.addEventListener('characteristicvaluechanged', (ev) => {
+      const dv = ev.target.value;
+      $('debugDati').textContent = new Date().toLocaleTimeString() + ' ' + hexDump(dv);
+      const d = leggiDati(dv);
+      if (d) mostraDati(d);
+    });
+    await chrDati.startNotifications();
 
-  if (!giorno){
-    mostraEsito(carta, 'Manca il giorno.', true);
-    return;
-  }
+    chrConfig.addEventListener('characteristicvaluechanged', (ev) => {
+      const c = leggiConfig(ev.target.value);
+      if (c) mostraConfig(c);
+    });
+    await chrConfig.startNotifications();
 
-  const corpo = {
-    nodeId: nodeId,
-    giorno: giorno,
-    kg: kgTesto === '' ? null : Number(kgTesto),
-    nota: nota === '' ? null : nota
-  };
-
-  try {
-    await invia('POST', '/api/interventi', corpo);
-    carta.r['int-kg'].value = '';
-    carta.r['int-nota'].value = '';
-    mostraEsito(carta, 'Intervento salvato.', false);
-    await caricaDelta(nodeId);
-  } catch (e){
-    mostraEsito(carta, 'Non salvato (' + e.message + ').', true);
-  }
-}
-
-async function cancellaIntervento(nodeId, giorno){
-  const carta = carte.get(nodeId);
-  if (!carta) return;
-  try {
-    await invia('DELETE', '/api/interventi?node_id=' + nodeId +
-                          '&giorno=' + encodeURIComponent(giorno));
-    mostraEsito(carta, 'Intervento tolto.', false);
-    await caricaDelta(nodeId);
-  } catch (e){
-    mostraEsito(carta, 'Non tolto (' + e.message + ').', true);
-  }
-}
-
-/* ====================================================================
-   Scoperta delle arnie: una sezione per nodo, generata da sola
-   ==================================================================== */
-
-/* Aggiorna UNA arnia: valori, banner allarmi correnti, storico, min/max.
-   datiUltimo e' opzionale - se chi chiama ha gia' la riga di
-   /api/dati/ultimo (es. scopriNodi, che le legge tutte insieme) la passa
-   qui per evitare una richiesta doppia; altrimenti la va a prendere da
-   sola (serve per il refresh mirato dopo un "visto" o al cambio scheda). */
-async function aggiornaUnaArnia(nodeId, datiUltimo){
-  const carta = carte.get(nodeId);
-  if (!carta) return;
-  try {
-    const d = datiUltimo !== undefined ? datiUltimo :
-      (await chiedi('/api/dati/ultimo?node_id=' + nodeId))[0];
-
-    if (d){
-      aggiornaValori(carta, d);
-      const primaVolta = carta.ultimoTs === null;
-      carta.ultimoTs = d.ricevuto_il;
-      if (primaVolta){
-        await caricaSerie(nodeId);
-        await caricaDelta(nodeId);
-      }
-    }
-
-    const allarmi = await chiedi('/api/allarmi?node_id=' + nodeId + '&giorni=' + CFG.giorni);
-    renderAllarmiCorrenti(carta.r['allarmi-correnti'], allarmi.correnti, NOMI_ARNIA);
-    aggiornaStoricoAllarmi(carta, allarmi, NOMI_ARNIA);
-    carta.haAllarme = allarmi.correnti.length > 0;   // letto dal riepilogo sulla Stazione
-
-    await popolaMinMax24h('/api/dati/serie?node_id=' + nodeId + '&giorni=1&max_punti=' + CFG.maxPunti, [
-      { campo:'temperatura', elemento: carta.r['temp-minmax'], dec:1, unita:'°C' },
-      { campo:'umidita', elemento: carta.r['umid-minmax'], dec:0, unita:'%' }
-    ]);
-  } catch (e){
-    console.error('arnia ' + nodeId, e);
-  }
-}
-
-/* Scopre i nodi che il server conosce e crea da sola la sezione di
-   qualunque arnia non ancora vista: e' l'unico posto che deve sapere che
-   le arnie esistono, tutto il resto lavora sulla mappa `carte`. */
-async function scopriNodi(){
-  const errore = document.getElementById('errore-pagina');
-  let ultimi;
-  try {
-    ultimi = await chiedi('/api/dati/ultimo');
-  } catch (e){
-    console.error(e);
-    errore.hidden = false;
-    errore.textContent = 'Dati non raggiungibili (' + e.message + '). Riprovo fra ' +
-                         Math.round(CFG.pollMs / 1000) + ' secondi.';
-    return null;
-  }
-  errore.hidden = true;
-
-  let nodiNuovi = false;
-  ultimi.forEach(function(d){
-    if (!carte.has(d.node_id)){ creaSezioneArnia(d.node_id); nodiNuovi = true; }
-  });
-  if (nodiNuovi) ricostruisciLinguette();
-
-  for (const d of ultimi){
-    await aggiornaUnaArnia(d.node_id, d);
-  }
-
-  document.getElementById('aggiornato').textContent =
-    'pagina aggiornata alle ' + new Date().toLocaleTimeString('it-IT');
-  return ultimi;
-}
-
-/* ====================================================================
-   Riepilogo delle arnie dentro la Stazione
-   ==================================================================== */
-async function aggiornaRiepilogoStazione(ultimi){
-  const blocco = document.getElementById('staz-riepilogo-blocco');
-  const cont = document.getElementById('staz-riepilogo');
-  if (!ultimi || !ultimi.length){ blocco.hidden = true; return; }
-  blocco.hidden = false;
-
-  const pezzi = await Promise.all(ultimi.map(async function(d){
-    let deltaTesto = 'vs ieri: —', deltaClasse = '';
+    // primo valore, senza aspettare la prima notifica
     try {
-      const delta = await chiedi('/api/dati/delta?node_id=' + d.node_id + '&giorni=2');
-      const ultimoGiorno = delta.giorni[delta.giorni.length - 1];
-      if (ultimoGiorno && ultimoGiorno.delta_g !== null && ultimoGiorno.delta_g !== undefined){
-        const kg = ultimoGiorno.delta_g / 1000;
-        deltaClasse = kg >= 0 ? 'su' : 'giu';
-        deltaTesto = (kg >= 0 ? '+' : '') + kg.toFixed(2) + ' kg vs ieri';
-      }
-    } catch (e){
-      console.error(e);
-    }
-    const carta = carte.get(d.node_id);
-    const haAllarme = !!(carta && carta.haAllarme);
-    return '<a class="riepilogo-arnia" href="#arnia-' + d.node_id + '">' +
-      (haAllarme ? '<span class="puntino-allarme" title="allarme attivo"></span>' : '') +
-      '<div class="nome">arnia' + String(d.node_id).padStart(2,'0') + '</div>' +
-      '<div class="peso num">' + fmt(d.totale === null ? null : d.totale / 1000, 2) + ' kg</div>' +
-      '<div class="delta' + (deltaClasse ? ' ' + deltaClasse : '') + '">' + testoSicuro(deltaTesto) + '</div>' +
-    '</a>';
-  }));
+      const dv0 = await chrDati.readValue();
+      $('debugDati').textContent = new Date().toLocaleTimeString() + ' (iniziale) ' + hexDump(dv0);
+      const d0 = leggiDati(dv0);
+      if (d0) mostraDati(d0);
+    } catch(e){}
+    try {
+      const c0 = leggiConfig(await chrConfig.readValue());
+      if (c0) mostraConfig(c0);
+    } catch(e){}
 
-  cont.innerHTML = pezzi.join('');
+    stato(true, false);
+    $('schermataIniziale').style.display = 'none';
+    $('pannello').classList.add('visibile');
+    log('Collegato.', 'successo');
+
+  } catch (e) {
+    stato(false, false);
+    if (e.name !== 'NotFoundError') log('Collegamento non riuscito: ' + e.message, 'errore');
+    else log('');
+  }
 }
 
-/* ====================================================================
-   Stazione
-   ==================================================================== */
-let gStazClima = null, gStazEnergia = null;
-
-async function aggiornaStazione(){
-  let ultimo = null;
-  try {
-    ultimo = await chiedi('/api/concentratore/ultimo');
-  } catch (e){
-    console.error(e);
-    return;
-  }
-
-  try {
-    const allarmi = await chiedi('/api/concentratore/allarmi?giorni=' + CFG.giorni);
-    renderAllarmiCorrenti(document.getElementById('staz-allarmi-correnti'), allarmi.correnti, NOMI_STAZIONE);
-  } catch (e){
-    console.error(e);
-  }
-
-  const avviso = document.getElementById('staz-avviso');
-  const grafici = document.getElementById('staz-grafici');
-  const tecnico = document.getElementById('staz-tecnico');
-
-  if (!ultimo){
-    document.getElementById('staz-quando').textContent = 'nessun dato ricevuto';
-    avviso.hidden = false;
-    grafici.hidden = true;
-    tecnico.hidden = true;
-    return;
-  }
-
-  avviso.hidden = true;
-  document.getElementById('staz-quando').textContent = 'ricevuto ' + tempoFa(ultimo.ricevuto_il);
-  document.getElementById('staz-temp').innerHTML = fmt(ultimo.temperatura, 1) + '<span class="unita"> °C</span>';
-  document.getElementById('staz-umid').innerHTML = fmt(ultimo.umidita, 0) + '<span class="unita"> %</span>';
-  document.getElementById('staz-pres').innerHTML = fmt(ultimo.pressione, 0) + '<span class="unita"> hPa</span>';
-  document.getElementById('staz-tens').innerHTML =
-    (ultimo.tensione_mv === null || ultimo.tensione_mv === undefined ? '—' : (ultimo.tensione_mv / 1000).toFixed(2)) +
-    '<span class="unita"> V</span>';
-  document.getElementById('staz-corr').innerHTML = fmt(ultimo.corrente_ma, 1) + '<span class="unita"> mA</span>';
-  // niente "potenza" (tensione*corrente, ridondante con i due riquadri qui
-  // accanto) ne' "batteria %" (mai alimentata, tolta anche dalla riga
-  // tecnica sotto: da una tensione sotto pannello non si ricava uno stato
-  // di carica affidabile)
-
-  tecnico.hidden = false;
-  tecnico.textContent =
-    'seq LoRa ' + (ultimo.seq_lora === null ? '—' : ultimo.seq_lora) +
-    ' · RSSI ' + fmt(ultimo.rssi, 0) + ' dBm' +
-    ' · SNR ' + fmt(ultimo.snr, 1) + ' dB';
-
-  const serie = await caricaSerieStazioneCondivisa();
-  if (!serie || !serie.punti){ grafici.hidden = true; return; }
-
-  grafici.hidden = false;
-  if (!gStazClima){
-    gStazClima = creaGraficoClima(document.getElementById('staz-tela-clima'), CFG.vistaGiorniStaz);
-    gStazEnergia = creaGraficoEnergia(document.getElementById('staz-tela-energia'));
-    document.getElementById('staz-reset-clima')
-      .addEventListener('click', function(){ azzera(gStazClima, CFG.vistaGiorniStaz); });
-    document.getElementById('staz-reset-energia')
-      .addEventListener('click', function(){ azzera(gStazEnergia, CFG.vistaGiorniStaz); });
-  }
-
-  const t = serie.t.map(msDa);
-  riempi(gStazClima, 0, t, serie.temperatura);
-  riempi(gStazClima, 1, t, serie.umidita);
-  riempi(gStazClima, 2, t, serie.pressione);
-  riempi(gStazEnergia, 0, t, serie.corrente_ma);
-  // Media mobile calcolata QUI, lato pagina, sui punti gia' caricati: il
-  // database e serie.corrente_ma restano il dato grezzo, la media e' solo
-  // un secondo tratto disegnato sopra. Finestra di 5 punti: sui 30 giorni
-  // caricati (CFG.giorni) il server dirada a passo = ceil(totali/maxPunti),
-  // e con pacchetti stazione ogni ~60s (il minimo imposto dal firmware,
-  // STAZIONE_MIN_MS) su 30 giorni il passo tipico e' intorno a 10-11, cioe'
-  // punti gia' spaziati di ~10-11 minuti l'uno dall'altro. 5 punti = circa
-  // 50-55 minuti di finestra: leviga il rumore dei picchi di trasmissione
-  // (che contamina ogni singola lettura in modo indipendente) restando
-  // sotto l'ora, cosi' le variazioni reali piu' lente non si appiattiscono.
-  riempi(gStazEnergia, 1, t, mediaMobile(serie.corrente_ma, FINESTRA_MEDIA_CORRENTE));
-  riempi(gStazEnergia, 2, t, serie.tensione_mv, 0.001);   // mV -> V, solo alla visualizzazione
-  gStazClima.update('none');
-  gStazEnergia.update('none');
-  gStazClima.resize();
-  gStazEnergia.resize();
-  document.getElementById('staz-nota').textContent = notaSerie(serie);
-
-  // pannelli di lettura: senza questo restano vuoti finche' non si tocca
-  // il grafico almeno una volta
-  mostraUltimoPunto(gStazClima, document.getElementById('staz-lettura-clima'));
-  mostraUltimoPunto(gStazEnergia, document.getElementById('staz-lettura-energia'));
-
-  await popolaMinMax24h('/api/concentratore/serie?giorni=1&max_punti=' + CFG.maxPunti, [
-    { campo:'temperatura', elemento: document.getElementById('staz-temp-minmax'), dec:1, unita:'°C' },
-    { campo:'umidita', elemento: document.getElementById('staz-umid-minmax'), dec:0, unita:'%' },
-    { campo:'corrente_ma', elemento: document.getElementById('staz-corr-minmax'), dec:1, unita:'mA' }
-  ]);
+function alDisconnesso(){
+  stato(false, false);
+  $('schermataIniziale').style.display = 'flex';
+  $('pannello').classList.remove('visibile');
+  $('rigaBadge').innerHTML = '';
+  log('Disconnesso — il modulo ha chiuso la finestra o si è allontanato.');
 }
 
-/* ====================================================================
-   Scheda Allarmi: storico unificato + azioni in blocco
-   ==================================================================== */
-const selezioneAllarmi = new Set();
-
-function etichettaSorgente(sorgente, nodeId){
-  return sorgente === 'stazione' ? 'Stazione' : 'arnia' + String(nodeId).padStart(2,'0');
+function disconnetti(){
+  if (device && device.gatt.connected) device.gatt.disconnect();
 }
 
-function tabellaFlagPer(sorgente){
-  return sorgente === 'stazione' ? NOMI_STAZIONE : NOMI_ARNIA;
-}
+// ---------------------------------------------------------- eventi UI
 
-function durataTesto(ev){
-  if (ev.attivo) return 'in corso';
-  const ms = msDa(ev.a) - msDa(ev.da);
-  if (!isFinite(ms) || ms < 0) return '—';
-  const min = Math.round(ms / 60000);
-  if (min < 60) return min + ' min';
-  const ore = min / 60;
-  if (ore < 48) return ore.toFixed(1) + ' h';
-  return (ore / 24).toFixed(1) + ' giorni';
-}
+$('btnConnetti').addEventListener('click', connetti);
+$('btnDisconnetti').addEventListener('click', disconnetti);
 
-async function caricaAllarmiTab(){
-  const tabella = document.getElementById('all-tabella');
-  const vuoto = document.getElementById('all-vuoto');
-  const corpo = document.getElementById('all-corpo');
-  const stato = document.getElementById('all-filtro-stato').value;
-
-  let eventi;
-  try {
-    eventi = await chiedi('/api/allarmi/eventi?giorni=3650&stato=' +
-      encodeURIComponent(stato) + '&limite=2000');
-  } catch (e){
-    console.error(e);
-    return;
-  }
-
-  selezioneAllarmi.clear();
-  document.getElementById('all-check-tutti').checked = false;
-
-  if (!eventi.length){
-    tabella.hidden = true;
-    vuoto.hidden = false;
-    return;
-  }
-  vuoto.hidden = true;
-  tabella.hidden = false;
-
-  corpo.innerHTML = eventi.map(function(ev){
-    const nomi = testoSicuro(nomiFlag(ev.flag, tabellaFlagPer(ev.sorgente)).join(', '));
-    const classeRiga = ev.stato === 'prova' ? ' class="riga-prova"' : '';
-    return '<tr' + classeRiga + '>' +
-      '<td><input type="checkbox" data-sel="' + ev.id + '"></td>' +
-      '<td>' + testoSicuro(etichettaSorgente(ev.sorgente, ev.node_id)) + '</td>' +
-      '<td>' + nomi + '</td>' +
-      '<td class="num">' + orario(ev.da) + '</td>' +
-      '<td class="num">' + (ev.attivo ? '—' : orario(ev.a)) + '</td>' +
-      '<td class="num">' + durataTesto(ev) + '</td>' +
-      '<td><span class="etichetta-stato">' + testoSicuro(ev.stato) + '</span></td>' +
-    '</tr>';
-  }).join('');
-
-  corpo.querySelectorAll('input[data-sel]').forEach(function(cb){
-    cb.addEventListener('change', function(){
-      const id = Number(cb.dataset.sel);
-      if (cb.checked) selezioneAllarmi.add(id); else selezioneAllarmi.delete(id);
-    });
-  });
-}
-
-async function applicaStatoSelezione(nuovoStato){
-  if (!selezioneAllarmi.size) return;
-  try {
-    await invia('POST', '/api/allarmi/stato', { ids: Array.from(selezioneAllarmi), stato: nuovoStato });
-  } catch (e){
-    console.error(e);
-    return;
-  }
-  await caricaAllarmiTab();
-}
-
-document.getElementById('all-filtro-stato').addEventListener('change', caricaAllarmiTab);
-document.getElementById('all-check-tutti').addEventListener('change', function(){
-  const check = this.checked;
-  document.querySelectorAll('#all-corpo input[data-sel]').forEach(function(cb){
-    cb.checked = check;
-    const id = Number(cb.dataset.sel);
-    if (check) selezioneAllarmi.add(id); else selezioneAllarmi.delete(id);
-  });
-});
-document.getElementById('all-azione-prova').addEventListener('click', function(){
-  applicaStatoSelezione('prova');
-});
-document.getElementById('all-azione-cancella').addEventListener('click', function(){
-  if (!selezioneAllarmi.size) return;
-  // mai una cancellazione irreversibile: resta nel database con
-  // stato='cancellato', recuperabile scegliendo "tutti" nel filtro - il
-  // confirm() qui e' solo per evitare un clic in blocco per sbaglio
-  if (!confirm('Cancellare ' + selezioneAllarmi.size + ' allarmi selezionati? ' +
-               'Restano nel database (recuperabili scegliendo "tutti" nel filtro), ' +
-               'spariscono solo dalle viste normali.')) return;
-  applicaStatoSelezione('cancellato');
-});
-document.getElementById('all-azione-ripristina').addEventListener('click', function(){
-  applicaStatoSelezione('normale');
+$('btnTara').addEventListener('click', async () => {
+  await invia(cmdTara());
+  log('Tara inviata.', 'successo');
 });
 
-/* ====================================================================
-   Navigazione fra le schede
-   ==================================================================== */
-function vistaAttuale(){
-  const hash = location.hash;
-  if (!hash || hash === '#' || hash === '#stazione') return { tipo: 'stazione' };
-  if (hash === '#allarmi') return { tipo: 'allarmi' };
-  const m = /^#arnia-(\d+)$/.exec(hash);
-  if (m) return { tipo: 'arnia', nodeId: Number(m[1]) };
-  return { tipo: 'stazione' };   // hash sconosciuto: torna alla vista iniziale
-}
+$('btnAssetto').addEventListener('click', async () => {
+  await invia(cmdAssetto());
+  log('Azzeramento assetto inviato.', 'successo');
+});
 
-function idLinguetta(tipo, nodeId){
-  if (tipo === 'stazione') return 'ling-stazione';
-  if (tipo === 'allarmi') return 'ling-allarmi';
-  return 'ling-arnia-' + nodeId;
-}
+$('btnCalibra').addEventListener('click', async () => {
+  const kg = parseFloat($('pesoCalibra').value);
+  if (!kg || kg <= 0) { log('Inserisci un peso valido prima di calibrare.', 'errore'); return; }
+  await invia(cmdCalibra(kg));
+  log('Calibrazione inviata con ' + kg + ' kg.', 'successo');
+});
 
-/* Ricostruita ogni volta che l'insieme dei nodi conosciuti cambia (una
-   nuova arnia scoperta): Stazione e Allarmi sono fisse, una linguetta per
-   arnia in mezzo, in ordine numerico. */
-function ricostruisciLinguette(){
-  const nav = document.getElementById('linguette');
-  const nodi = Array.from(carte.keys()).sort(function(a, b){ return a - b; });
-
-  let html = '<a class="linguetta staz" id="ling-stazione" href="#">Stazione</a>';
-  nodi.forEach(function(nodeId){
-    html += '<a class="linguetta" id="ling-arnia-' + nodeId + '" href="#arnia-' + nodeId + '">' +
-            'arnia' + String(nodeId).padStart(2, '0') + '</a>';
+document.querySelectorAll('[data-cfg]').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const tipo = btn.dataset.cfg;
+    if (tipo === 'n') await invia(cmdNodeId(parseInt($('cfgNodeId').value, 10)));
+    if (tipo === 'i') await invia(cmdIntervallo(parseInt($('cfgIntervallo').value, 10)));
+    if (tipo === 'g') await invia(cmdSogliaIncl(parseInt($('cfgSogliaIncl').value, 10)));
+    if (tipo === 'm') await invia(cmdSogliaMov(parseInt($('cfgSogliaMov').value, 10)));
+    if (tipo === 'p') await invia(cmdSogliaSbalzo(parseInt($('cfgSogliaSbalzo').value, 10)));
+    if (tipo === 'u') await invia(cmdSogliaTaglio(parseInt($('cfgSogliaTaglio').value, 10)));
+    if (tipo === 'y') await invia(cmdSogliaRientro(parseInt($('cfgSogliaRientro').value, 10)));
+    if (tipo === 'b') await invia(cmdSogliaAllarmeBatt(parseInt($('cfgSogliaAllarmeBatt').value, 10)));
+    log('Impostazione salvata.', 'successo');
   });
-  html += '<a class="linguetta allarmi" id="ling-allarmi" href="#allarmi">Allarmi</a>';
-  nav.innerHTML = html;
-  aggiornaLinguetteAttive();
-}
+});
 
-function aggiornaLinguetteAttive(){
-  const attuale = vistaAttuale();
-  document.querySelectorAll('.linguetta').forEach(function(a){ a.classList.remove('attiva'); });
-  const id = attuale.tipo === 'arnia' ? idLinguetta('arnia', attuale.nodeId) : idLinguetta(attuale.tipo);
-  const el = document.getElementById(id);
-  if (el) el.classList.add('attiva');
-}
-
-/* Chiamata al cambio di scheda (hashchange) e al primo carico: sistema
-   cosa e' visibile, sposta lo scroll in cima, e aggiorna SOLO la scheda
-   appena mostrata - non e' compito suo tenere fresche le altre, ci pensa
-   il giro periodico piu' sotto senza toccare scroll/visibilita'. */
-function mostraVista(){
-  const attuale = vistaAttuale();
-
-  document.getElementById('vista-stazione').hidden = attuale.tipo !== 'stazione';
-  document.getElementById('vista-allarmi').hidden = attuale.tipo !== 'allarmi';
-  carte.forEach(function(c, nodeId){
-    c.sezione.hidden = !(attuale.tipo === 'arnia' && attuale.nodeId === nodeId);
+// --- nuovi: taratura per cella ---
+document.querySelectorAll('.btnZeroCella').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const n = parseInt(btn.dataset.cella, 10);
+    await invia(cmdZeroCella(n));
+    log('Zero cella ' + n + ' inviato.', 'successo');
   });
+});
 
-  aggiornaLinguetteAttive();
-  window.scrollTo(0, 0);
-
-  if (attuale.tipo === 'stazione'){
-    aggiornaStazione();
-  } else if (attuale.tipo === 'arnia'){
-    const carta = carte.get(attuale.nodeId);
-    if (carta){
-      // i grafici disegnati mentre la sezione era nascosta hanno dimensione zero
-      carta.gPeso.resize(); carta.gClima.resize(); carta.gDelta.resize();
-      aggiornaUnaArnia(attuale.nodeId);
-    }
-  } else if (attuale.tipo === 'allarmi'){
-    caricaAllarmiTab();
-  }
-}
-
-window.addEventListener('hashchange', mostraVista);
-
-/* Giro periodico: scopre nodi nuovi e tiene fresche tutte le arnie in
-   background (serve anche al puntino di allarme nel riepilogo, che deve
-   essere giusto anche per un'arnia la cui scheda non e' mai stata
-   aperta), poi aggiorna la scheda attiva se e' Stazione o Allarmi (le
-   arnie le ha gia' aggiornate scopriNodi). Mai un tocco a scroll o
-   visibilita' qui dentro: quello lo fa solo mostraVista(), sull'evento
-   di navigazione vero. */
-async function cicloPrincipale(){
-  const ultimi = await scopriNodi();
-
-  // bookmark diretto a un'arnia scoperta solo ora al primo carico
-  const attuale = vistaAttuale();
-  if (attuale.tipo === 'arnia'){
-    const carta = carte.get(attuale.nodeId);
-    if (carta && carta.sezione.hidden) mostraVista();
-  }
-
-  if (ultimi) await aggiornaRiepilogoStazione(ultimi);
-
-  if (attuale.tipo === 'stazione') await aggiornaStazione();
-  else if (attuale.tipo === 'allarmi') await caricaAllarmiTab();
-}
-
-ricostruisciLinguette();
-mostraVista();
-cicloPrincipale();
-setInterval(cicloPrincipale, CFG.pollMs);
-
-setInterval(function(){
-  caricaSerieStazioneCondivisa();
-  carte.forEach(function(c, nodeId){
-    caricaSerie(nodeId).catch(function(e){ console.error(e); });
-    caricaDelta(nodeId).catch(function(e){ console.error(e); });
+document.querySelectorAll('.btnCalibraCella').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const n = parseInt(btn.dataset.cella, 10);
+    const kg = parseFloat($('pesoCella' + n).value);
+    if (!kg || kg <= 0) { log('Inserisci un peso valido per la cella ' + n + '.', 'errore'); return; }
+    await invia(cmdCalibraCella(n, kg));
+    log('Calibrazione cella ' + n + ' inviata con ' + kg + ' kg.', 'successo');
   });
-}, CFG.serieMs);
+});
+
+supportaBluetooth();
+})();
 </script>
 </body>
 </html>
